@@ -32,3 +32,9 @@ npm test         # headless check: every hole parses and a bot can sink each one
 | `src/audio.js` | Synthesized chiptune sound effects (WebAudio, no assets) |
 
 To add a hole, append a map to `LEVELS` in `src/levels.js` and run `npm test`.
+
+## Deploying to GitHub Pages
+
+`.github/workflows/deploy.yml` runs the tests, builds the game and publishes `dist/` to GitHub Pages on every push to `main`. You can also start it by hand from the Actions tab.
+
+One-time setup: in the repo go to **Settings → Pages → Build and deployment → Source** and choose **GitHub Actions**. The game will then be at `https://<owner>.github.io/pixel-golf/`.
