@@ -291,7 +291,7 @@ button {
 }
 
 h1 {
-  margin: 0 0 18px;
+  margin: 0 0 26px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -398,4 +398,181 @@ tr.total td {
   font-size: 12px;
   margin: 16px 0 0;
   min-height: 1em;
+}
+
+/* ---------- Retention: daily, coins, stars, shop ---------- */
+.px-icon {
+  display: inline-block;
+  vertical-align: middle;
+  image-rendering: pixelated;
+}
+.pill .px-icon {
+  margin: -4px 6px -3px 0;
+}
+
+.title-top {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 12px);
+  left: 12px;
+  right: 12px;
+  display: flex;
+  justify-content: space-between;
+}
+.title-top .pill {
+  font-size: 12px;
+  padding: 9px 10px 8px;
+}
+
+.btn.daily {
+  background: #ff6fa8;
+  color: var(--ink);
+  box-shadow:
+    0 calc(-1 * var(--px)) 0 0 var(--ink),
+    0 var(--px) 0 0 var(--ink),
+    calc(-1 * var(--px)) 0 0 0 var(--ink),
+    var(--px) 0 0 0 var(--ink),
+    inset 0 calc(-2 * var(--px)) 0 0 #d94a86,
+    inset 0 var(--px) 0 0 #ffc2dc;
+  position: relative;
+  margin-bottom: 22px;
+}
+.daily-label {
+  display: block;
+}
+.daily-sub {
+  display: block;
+  font-size: 9px;
+  margin-top: 10px;
+  line-height: 1.6;
+}
+.badge {
+  position: absolute;
+  top: -12px;
+  right: -8px;
+  background: var(--accent);
+  color: var(--ink);
+  font-size: 9px;
+  padding: 5px 6px 4px;
+  box-shadow: 0 0 0 3px var(--ink);
+  animation: blink 1s steps(2) infinite;
+}
+
+.course-stars {
+  font-size: 9px;
+  margin-left: 6px;
+}
+.course-stars .px-icon {
+  margin: -4px 2px -2px 0;
+}
+.course-stars .px-icon path {
+  fill: var(--ink);
+}
+
+#toast {
+  position: absolute;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  top: calc(env(safe-area-inset-top) + 76px);
+  background: var(--ink);
+  color: var(--accent);
+  font-size: 11px;
+  line-height: 1.6;
+  text-align: center;
+  padding: 10px 14px 9px;
+  box-shadow: 0 0 0 3px var(--paper), 0 0 0 6px var(--ink);
+  z-index: 10;
+  pointer-events: none;
+  animation: pop 0.35s steps(5) both;
+}
+
+.banner-stars {
+  margin: 4px 0 12px;
+}
+.banner-stars .px-icon {
+  width: 28px;
+  height: 28px;
+  margin: 0 3px;
+}
+.banner-coins .px-icon {
+  margin: -5px 6px -3px 0;
+}
+
+.daily-name {
+  text-align: center;
+  font-size: 10px;
+  margin: -8px 0 14px;
+  opacity: 0.75;
+}
+.daily-score {
+  text-align: center;
+  font-size: 22px;
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+.daily-score small {
+  display: block;
+  font-size: 10px;
+  opacity: 0.7;
+}
+.daily-stats {
+  display: flex;
+  justify-content: space-around;
+  text-align: center;
+  margin-bottom: 12px;
+}
+.daily-stats span {
+  font-size: 16px;
+  display: block;
+  margin-bottom: 6px;
+}
+.daily-stats small {
+  font-size: 8px;
+  opacity: 0.7;
+}
+.daily-next {
+  text-align: center;
+  font-size: 9px;
+  line-height: 1.7;
+  opacity: 0.75;
+  margin: 0 0 4px;
+}
+
+.shop-coins {
+  text-align: center;
+  font-size: 12px;
+  margin: -6px 0 14px;
+}
+.shop-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.skin {
+  font-family: var(--font);
+  background: #f3e6c4;
+  color: var(--ink);
+  padding: 12px 6px 10px;
+  font-size: 8px;
+  line-height: 1.6;
+  box-shadow: 0 0 0 3px var(--ink);
+  margin: 3px;
+}
+.skin.equipped {
+  background: var(--accent);
+}
+.skin.locked {
+  opacity: 0.85;
+}
+.skin .ball {
+  display: block;
+  width: 30px;
+  height: 30px;
+  margin: 0 auto 8px;
+  clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%);
+}
+.skin .price .px-icon {
+  margin: -4px 4px -2px 0;
 }

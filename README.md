@@ -13,6 +13,18 @@ npm test         # headless check: every hole parses and a bot can sink each one
 
 **Controls:** drag back from anywhere on the screen and release to putt (slingshot style). Pinch or scroll to zoom. The eye button shows the whole course.
 
+## Keep-coming-back features
+
+- **Daily Hole:** a new procedurally generated hole every day (`src/daily.js`), the same for everyone on that date. Your first finish of the day counts; replays are for fun. `npm test` plays 45 days of generated holes with the bot, and `node tests/daily.test.js 365` checks a full year.
+- **Streak:** finishing the daily hole on consecutive days grows a 🔥 streak that boosts the coin reward.
+- **Daily gift:** coins for opening the game each day, growing for consecutive days.
+- **Stars:** every hole awards 1–3 stars (finish / par / under par). Each nine has 27 to collect, and new stars pay a bonus.
+- **Ball shop:** spend coins on ball skins with coloured trails.
+- **Share:** a spoiler-free result for the daily hole (system share sheet on Android, clipboard on desktop).
+- **Reminders (Android):** opt-in local notification the next day, at about the time you played, mentioning your streak. Toggle it in the pause menu.
+
+Progress lives in `src/progress.js` (unit tested in `tests/progress.test.js`). It is saved in local storage and, on Android, backed up to native storage.
+
 ## Android app
 
 The game is wrapped as a native Android app with [Capacitor](https://capacitorjs.com/). The `android/` folder is a normal Android Studio project.
@@ -50,7 +62,9 @@ Create the keystore once with `keytool -genkey -v -keystore release.jks -keyalg 
 | File | Purpose |
 | --- | --- |
 | `src/levels.js` | The 18 holes (two nines) as ASCII tile maps (legend at top of file) |
-| `src/native.js` | Android hooks via Capacitor (haptics, back button, app pause); no-ops on the web |
+| `src/native.js` | Android hooks via Capacitor (haptics, back button, app pause, reminders, share, save backup); web fallbacks |
+| `src/daily.js` | Daily hole generator (seeded by date) and connectivity check |
+| `src/progress.js` | Coins, stars, streaks, gift, skins, settings |
 | `src/course.js` | Parses levels and works out heights, slopes and walls (no rendering) |
 | `src/physics.js` | Fixed-step ball physics: slopes, friction, sand, walls, bumpers, spinners, cup |
 | `src/renderer.js` | Low-res render targets + outline/composite shader |

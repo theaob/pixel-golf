@@ -5,5 +5,11 @@
   "backgroundColor": "#2b6a4f",
   "android": {
     "backgroundColor": "#2b6a4f"
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_pixelgolf",
+      "iconColor": "#6CC24A"
+    }
   }
 }

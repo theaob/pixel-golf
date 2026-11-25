@@ -78,3 +78,35 @@ for d in sorted(RES.glob('mipmap-*dpi')):
 for p in sorted(RES.glob('drawable*/splash.png')):
     size = Image.open(p).size
     save(centered(size, 0.4, BG), p)
+
+# Notification icon: white silhouette of the flag on transparent (Android tints it).
+FLAG = [
+    '................',
+    '................',
+    '.....PFFFFF.....',
+    '.....PFFFFFF....',
+    '.....PFFFFF.....',
+    '.....P..........',
+    '.....P..........',
+    '.....P..........',
+    '.....P..........',
+    '.....P..........',
+    '.....P..........',
+    '..GGGPGGGGGG....',
+    '..GGGGGGGGGG....',
+    '................',
+    '................',
+    '................',
+]
+for density, size in {'mdpi': 24, 'hdpi': 36, 'xhdpi': 48, 'xxhdpi': 72, 'xxxhdpi': 96}.items():
+    px = size // 16
+    off = (size - 16 * px) // 2
+    img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    for y, row in enumerate(FLAG):
+        for x, ch in enumerate(row):
+            if ch != '.':
+                d.rectangle([off + x * px, off + y * px, off + (x + 1) * px - 1, off + (y + 1) * px - 1], fill=(255, 255, 255, 255))
+    out = RES / f'drawable-{density}'
+    out.mkdir(exist_ok=True)
+    save(img, out / 'ic_stat_pixelgolf.png')

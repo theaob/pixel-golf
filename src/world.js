@@ -513,20 +513,27 @@ export class CourseView {
 }
 
 // The ball mesh: a low-poly icosphere so rolling reads clearly at low res.
-export function createBallMesh() {
+// A band of faces around the equator uses the skin's second colour so the
+// spin stays visible.
+export function createBallMesh(skin = { a: PALETTE.ball, b: 0xd6dcff }) {
   const geo = new THREE.IcosahedronGeometry(BALL_R, 1);
-  // Two-tone faces make the spin visible.
-  const colors = [];
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(geo.attributes.position.count * 3), 3));
+  const mesh = new THREE.Mesh(geo, vertexToon());
+  mesh.castShadow = true;
+  setBallSkin(mesh, skin);
+  return mesh;
+}
+
+export function setBallSkin(mesh, skin) {
+  const geo = mesh.geometry;
   const pos = geo.attributes.position;
-  const c1 = new THREE.Color(PALETTE.ball);
-  const c2 = new THREE.Color(0xd6dcff);
+  const col = geo.attributes.color;
+  const c1 = new THREE.Color(skin.a);
+  const c2 = new THREE.Color(skin.b);
   for (let i = 0; i < pos.count; i += 3) {
     const cy = (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3;
     const c = Math.abs(cy) < BALL_R * 0.3 ? c2 : c1;
-    for (let k = 0; k < 3; k++) colors.push(c.r, c.g, c.b);
+    for (let k = 0; k < 3; k++) col.setXYZ(i + k, c.r, c.g, c.b);
   }
-  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  const mesh = new THREE.Mesh(geo, vertexToon());
-  mesh.castShadow = true;
-  return mesh;
+  col.needsUpdate = true;
 }

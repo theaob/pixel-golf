@@ -5,16 +5,38 @@ import { COURSES } from './levels.js';
 import { parseLevel, heightAt, BALL_R, T, tileAt } from './course.js';
 import { createBall, shoot, stepBall, DT } from './physics.js';
 import { PixelRenderer } from './renderer.js';
-import { CourseView, createBallMesh, PALETTE } from './world.js';
+import { CourseView, createBallMesh, setBallSkin, PALETTE } from './world.js';
 import { Sfx } from './audio.js';
 import { native } from './native.js';
+import { dailyLevel, dateKey } from './daily.js';
+import { createProgress, SKINS, SAVE_KEY } from './progress.js';
+import { ICONS, stars as starIcons } from './icons.js';
+
+const SHARE_URL = 'https://theaob.github.io/pixel-golf/';
 
 const MAX_STROKES = 10;
 let course = COURSES[0]; // the nine being played
 let LEVELS = course.holes;
 const holeNo = (i) => course.firstHole + i;
-const bestKey = (c) => `pg-best-${c.id}`;
+const holeId = (i) => `${course.id}:${i}`;
 const $ = (id) => document.getElementById(id);
+
+const storage = {
+  getItem(k) {
+    try {
+      return localStorage.getItem(k);
+    } catch {
+      return null;
+    }
+  },
+  setItem(k, v) {
+    try {
+      localStorage.setItem(k, v);
+    } catch {}
+  },
+};
+const progress = createProgress(storage);
+progress.onChange((d) => native.backup(JSON.stringify(d)));
 
 // ---------------------------------------------------------------------------
 // Renderer, scene, camera
@@ -98,7 +120,7 @@ function overviewFor(course) {
 // ---------------------------------------------------------------------------
 // Ball, aim indicator, particles
 
-const ballMesh = createBallMesh();
+const ballMesh = createBallMesh(progress.equipped());
 scene.add(ballMesh);
 
 const shadowBlob = new THREE.Mesh(
@@ -216,12 +238,23 @@ function startHole(i) {
   cam.wpp = ov.wpp;
   cam.target.copy(ov.target);
   game.introTimer = 1.6;
-  showBanner(`HOLE ${holeNo(i)}`, `${LEVELS[i].name.toUpperCase()}<br>PAR ${LEVELS[i].par}`, 2200);
+  showBanner(course.daily ? `DAILY #${course.daily.number}` : `HOLE ${holeNo(i)}`, `${LEVELS[i].name.toUpperCase()}<br>PAR ${LEVELS[i].par}`, 2200);
   setHint(true);
 }
 
-function newGame(courseIndex = 0) {
-  course = COURSES[courseIndex];
+function dailyCourse(key) {
+  const level = dailyLevel(key);
+  return { id: 'daily', name: `Daily #${level.daily.number}`, firstHole: 1, holes: [level], daily: level.daily };
+}
+
+function startDaily() {
+  game.dailyKey = dateKey();
+  newGame(dailyCourse(game.dailyKey));
+}
+
+// `which` is an index into COURSES or a course object (the daily).
+function newGame(which = 0) {
+  course = typeof which === 'number' ? COURSES[which] : which;
   LEVELS = course.holes;
   game.scores = [];
   hideScreens();
@@ -245,11 +278,21 @@ function holeFinished(pickedUp = false) {
   game.state = 'sunk';
   game.stateTimer = 0;
   const good = strokes <= par;
+  const reward = course.daily ? null : progress.recordHole(holeId(game.holeIndex), strokes, par, pickedUp);
   setTimeout(() => {
     sfx.fanfare(good);
-    showBanner(pickedUp ? 'PICKED UP' : resultName(strokes, par), `${strokes} STROKE${strokes === 1 ? '' : 'S'}`, 0);
+    let sub = `${strokes} STROKE${strokes === 1 ? '' : 'S'}`;
+    if (reward) {
+      sub = `<div class="banner-stars">${starIcons(reward.stars)}</div>${sub}`;
+      if (reward.coins) sub += `<br><span class="banner-coins">${ICONS.coin}+${reward.coins}</span>`;
+    }
+    showBanner(pickedUp ? 'PICKED UP' : resultName(strokes, par), sub, 0);
     $('btn-next').classList.remove('hidden');
-    $('btn-next').textContent = game.holeIndex === LEVELS.length - 1 ? 'SCORECARD' : 'NEXT HOLE';
+    $('btn-next').textContent = course.daily
+      ? 'RESULTS'
+      : game.holeIndex === LEVELS.length - 1
+        ? 'SCORECARD'
+        : 'NEXT HOLE';
   }, pickedUp ? 100 : 700);
   setHint(false);
 }
@@ -267,16 +310,74 @@ function nextHole() {
 
 function finishRound() {
   game.state = 'done';
+  if (course.daily) {
+    showDailyResult();
+    return;
+  }
   const total = game.scores.reduce((a, b) => a + b, 0);
-  let best = null;
-  try {
-    best = Number(localStorage.getItem(bestKey(course))) || null;
-    if (!best || total < best) {
-      localStorage.setItem(bestKey(course), String(total));
-    }
-  } catch {}
-  const isBest = !best || total < best;
+  const { isBest } = progress.recordRound(course.id, total);
   showScorecard(true, isBest);
+}
+
+function untilMidnight() {
+  const now = new Date();
+  const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const mins = Math.max(1, Math.ceil((next - now) / 60000));
+  return `${Math.floor(mins / 60)}H ${String(mins % 60).padStart(2, '0')}M`;
+}
+
+function showDailyResult() {
+  const key = game.dailyKey;
+  const level = course.holes[0];
+  const strokes = game.scores[0];
+  const res = progress.recordDaily(key, strokes, level.par);
+  const official = progress.dailyResult(key);
+  const streak = progress.streak(key);
+  const n = level.daily.number;
+  $('daily-title').textContent = `DAILY #${n}`;
+  $('daily-name').textContent = `${level.name.toUpperCase()} · PAR ${level.par}`;
+  $('daily-score').innerHTML =
+    `${official} STROKE${official === 1 ? '' : 'S'}<small>${resultName(official, level.par)}</small>` +
+    (res.first ? '' : `<small>REPLAY: ${strokes} (NOT COUNTED)</small>`);
+  $('daily-streak').innerHTML = `${ICONS.flame}${streak}`;
+  $('daily-coins').innerHTML = res.first ? `${ICONS.coin}+${res.coins}` : '-';
+  $('daily-next').textContent = `NEXT DAILY HOLE IN ${untilMidnight()}`;
+  game.shareText =
+    `Pixel Golf Daily #${n} ⛳\n${level.name} · Par ${level.par}\n` +
+    `${official} stroke${official === 1 ? '' : 's'} (${resultName(official, level.par).replace('!', '')})` +
+    (streak > 1 ? `\n🔥 ${streak}-day streak` : '') +
+    `\n${SHARE_URL}`;
+  const r = progress.data.reminders;
+  $('btn-remind').classList.toggle('hidden', !native.canRemind || r.enabled);
+  if (res.first && r.enabled) native.scheduleReminder(streak);
+  hideScreens();
+  $('hud').classList.add('hidden');
+  $('screen-daily').classList.remove('hidden');
+  if (res.first && streak > 1) toast(`${ICONS.flame} ${streak} DAY STREAK!`);
+}
+
+let toastTimer = null;
+function toast(html, ms = 2200) {
+  const el = $('toast');
+  el.innerHTML = html;
+  el.classList.remove('hidden');
+  el.style.animation = 'none';
+  void el.offsetWidth;
+  el.style.animation = '';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.add('hidden'), ms);
+}
+
+async function enableReminders() {
+  const ok = await native.enableReminders();
+  progress.setReminders(ok);
+  if (ok) {
+    native.scheduleReminder(progress.streak(dateKey()));
+    toast('REMINDER SET FOR TOMORROW');
+  } else {
+    toast('NOTIFICATIONS ARE BLOCKED<br>ENABLE THEM IN SETTINGS', 3000);
+  }
+  return ok;
 }
 
 // ---------------------------------------------------------------------------
@@ -501,7 +602,7 @@ function powerColor(p) {
 // HUD + screens
 
 function updateHud() {
-  $('hud-hole').textContent = `HOLE ${holeNo(game.holeIndex)}`;
+  $('hud-hole').textContent = course.daily ? `DAILY #${course.daily.number}` : `HOLE ${holeNo(game.holeIndex)}`;
   $('hud-par').textContent = `PAR ${LEVELS[game.holeIndex].par}`;
   $('hud-strokes').textContent = `SHOTS ${game.strokes}`;
 }
@@ -557,16 +658,15 @@ function showTitle() {
   $('btn-next').classList.add('hidden');
   $('hud').classList.add('hidden');
   $('screen-title').classList.remove('hidden');
-  COURSES.forEach((c, ci) => {
-    let best = null;
-    try {
-      best = localStorage.getItem(bestKey(c));
-      // Scores saved before there were two nines belong to the front nine.
-      if (!best && c.id === 'front') best = localStorage.getItem('pg-best');
-    } catch {}
-    const par = c.holes.reduce((a, l) => a + l.par, 0);
-    $(`best-${ci}`).textContent = best ? `BEST ${best} · PAR ${par}` : `PAR ${par}`;
-  });
+  refreshTitle();
+  const gift = progress.claimGift(dateKey());
+  if (gift) {
+    setTimeout(() => {
+      toast(`DAILY GIFT ${ICONS.coin}+${gift}`, 2600);
+      sfx.fanfare(true);
+      refreshTitle();
+    }, 600);
+  }
   course = COURSES[0];
   LEVELS = course.holes;
   loadHole(0);
@@ -575,10 +675,78 @@ function showTitle() {
   cam.target.copy(ov.target);
 }
 
+function refreshTitle() {
+  const today = dateKey();
+  const streak = progress.streak(today);
+  $('title-streak').innerHTML = `${ICONS.flame}${streak}`;
+  $('title-coins').innerHTML = `${ICONS.coin}${progress.data.coins}`;
+  const daily = dailyLevel(today);
+  const done = progress.dailyResult(today);
+  const n = daily.daily.number;
+  $('daily-sub').innerHTML =
+    done != null
+      ? `#${n} DONE · ${done} STROKE${done === 1 ? '' : 'S'}<br>NEXT IN ${untilMidnight()}`
+      : `#${n} · PAR ${daily.par}${streak ? '<br>KEEP YOUR STREAK GOING!' : ''}`;
+  $('btn-daily').querySelector('.badge')?.remove();
+  if (done == null) $('btn-daily').insertAdjacentHTML('beforeend', '<span class="badge">NEW</span>');
+  COURSES.forEach((c, ci) => {
+    const par = c.holes.reduce((a, l) => a + l.par, 0);
+    const best = progress.data.rounds[c.id];
+    $(`best-${ci}`).textContent = best ? `BEST ${best} · PAR ${par}` : `PAR ${par}`;
+    $(`stars-${ci}`).innerHTML = `${ICONS.star}${progress.courseStars(c.id, c.holes)}/${c.holes.length * 3}`;
+  });
+}
+
+// Keep the countdown / date fresh while the title is showing.
+let titleDay = dateKey();
+setInterval(() => {
+  if (game.state !== 'title') return;
+  if (dateKey() !== titleDay) {
+    titleDay = dateKey();
+    showTitle(); // new day: new daily hole and gift
+  } else refreshTitle();
+}, 15000);
+
+function renderShop() {
+  $('shop-coins').innerHTML = `${ICONS.coin}${progress.data.coins}`;
+  const eq = progress.equipped().id;
+  const hex = (c) => `#${c.toString(16).padStart(6, '0')}`;
+  $('shop-grid').innerHTML = SKINS.map((s) => {
+    const owned = progress.owns(s.id);
+    const label = owned ? (s.id === eq ? 'EQUIPPED' : 'TAP TO USE') : `${ICONS.coin}${s.price}`;
+    return `<button class="skin${s.id === eq ? ' equipped' : ''}${owned ? '' : ' locked'}" data-id="${s.id}">
+      <span class="ball" style="background:linear-gradient(${hex(s.a)} 0 38%, ${hex(s.b)} 38% 62%, ${hex(s.a)} 62%)"></span>
+      ${s.name}<br><span class="price">${label}</span></button>`;
+  }).join('');
+}
+
+$('shop-grid').addEventListener('click', (e) => {
+  const btn = e.target.closest('.skin');
+  if (!btn) return;
+  sfx.unlock();
+  const id = btn.dataset.id;
+  const skin = SKINS.find((s) => s.id === id);
+  if (progress.owns(id)) {
+    progress.equip(id);
+    sfx.click();
+  } else if (progress.buy(id)) {
+    sfx.fanfare(true);
+    toast(`UNLOCKED ${skin.name}!`);
+  } else {
+    sfx.wall(1);
+    toast(`NEED ${skin.price - progress.data.coins} MORE ${ICONS.coin}`);
+  }
+  setBallSkin(ballMesh, progress.equipped());
+  renderShop();
+  refreshTitle();
+});
+
 function setPaused(p) {
   game.paused = p;
   $('screen-menu').classList.toggle('hidden', !p);
   $('btn-sound').textContent = `SOUND: ${sfx.enabled ? 'ON' : 'OFF'}`;
+  $('btn-reminders').classList.toggle('hidden', !native.canRemind);
+  $('btn-reminders').textContent = `REMINDERS: ${progress.data.reminders.enabled ? 'ON' : 'OFF'}`;
   if (p) cancelAim();
 }
 
@@ -590,6 +758,30 @@ function bind(id, fn) {
     fn();
   });
 }
+bind('btn-daily', startDaily);
+bind('btn-shop', () => {
+  renderShop();
+  hideScreens();
+  $('screen-shop').classList.remove('hidden');
+});
+bind('btn-shop-close', showTitle);
+bind('btn-share', async () => {
+  const r = await native.share(game.shareText);
+  if (r === 'copied') toast('COPIED TO CLIPBOARD');
+});
+bind('btn-remind', async () => {
+  if (await enableReminders()) $('btn-remind').classList.add('hidden');
+});
+bind('btn-daily-done', showTitle);
+bind('btn-reminders', async () => {
+  if (progress.data.reminders.enabled) {
+    progress.setReminders(false);
+    native.cancelReminder();
+  } else {
+    await enableReminders();
+  }
+  $('btn-reminders').textContent = `REMINDERS: ${progress.data.reminders.enabled ? 'ON' : 'OFF'}`;
+});
 bind('btn-play-0', () => newGame(0));
 bind('btn-play-1', () => newGame(1));
 bind('btn-next', nextHole);
@@ -660,6 +852,16 @@ function update(dt) {
         if (!b.moving) break;
       }
       if (!b.moving) game.acc = 0;
+      const skin = progress.equipped();
+      if (skin.trail && b.moving && Math.hypot(b.vx, b.vz) > 0.6) {
+        game.trailT = (game.trailT || 0) - dt;
+        if (game.trailT <= 0) {
+          game.trailT = 0.035;
+          burst(b.x, heightAt(co, b.x, b.z) + BALL_R * 0.6, b.z, [skin.trail], 1, {
+            speed: 0.15, up: 0.4, life: 0.45, gravity: 0,
+          });
+        }
+      }
       handleEvents(events);
     }
 
@@ -750,14 +952,16 @@ document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: fal
 document.addEventListener('gesturestart', (e) => e.preventDefault());
 
 // Debug hook for automated tests.
-window.__pixelGolf = { game, shootAt: (dx, dz, p) => { aim.dir.set(dx, dz).normalize(); aim.power = p; takeShot(); }, startHole, newGame };
+window.__pixelGolf = { game, progress, startDaily, showTitle, shootAt: (dx, dz, p) => { aim.dir.set(dx, dz).normalize(); aim.power = p; takeShot(); }, startHole, newGame };
 
 showTitle();
 frame();
 
 // Android: hardware back button and app backgrounding.
 native.onBack(() => {
-  if (!$('screen-card').classList.contains('hidden')) {
+  if (!$('screen-shop').classList.contains('hidden') || !$('screen-daily').classList.contains('hidden')) {
+    showTitle();
+  } else if (!$('screen-card').classList.contains('hidden')) {
     $('btn-card-close').click();
   } else if (game.state === 'title') {
     native.exit();
@@ -765,6 +969,17 @@ native.onBack(() => {
     setPaused(!game.paused);
   }
 });
+if (native.isNative && !storage.getItem(SAVE_KEY)) {
+  native.restore().then((raw) => {
+    if (!raw) return;
+    try {
+      progress.replace(JSON.parse(raw));
+      setBallSkin(ballMesh, progress.equipped());
+      if (game.state === 'title') refreshTitle();
+    } catch {}
+  });
+}
+
 native.onBackground(() => {
   if (game.state !== 'title' && game.state !== 'done') setPaused(true);
 });
