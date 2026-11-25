@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#2b6a4f" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Pixel Golf</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="app">
+      <div id="stage"></div>
+
+      <div id="hud" class="hidden">
+        <div class="hud-top">
+          <div class="hud-stats">
+            <div class="pill" id="hud-hole">HOLE 1/9</div>
+            <div class="pill" id="hud-par">PAR 2</div>
+            <div class="pill accent" id="hud-strokes">SHOTS 0</div>
+          </div>
+          <div class="hud-buttons">
+            <button class="icon-btn" id="btn-view" aria-label="Toggle course overview">
+              <svg viewBox="0 0 9 9" shape-rendering="crispEdges"><path d="M0 4h1v1H0zM1 3h1v1H1zM1 5h1v1H1zM2 2h5v1H2zM2 6h5v1H2zM7 3h1v1H7zM7 5h1v1H7zM8 4h1v1H8zM3 4h3v1H3zM4 3h1v3H4z"/></svg>
+            </button>
+            <button class="icon-btn" id="btn-menu" aria-label="Pause menu">
+              <svg viewBox="0 0 9 9" shape-rendering="crispEdges"><path d="M2 1h2v7H2zM5 1h2v7H5z"/></svg>
+            </button>
+          </div>
+        </div>
+        <div id="banner" class="hidden"></div>
+        <div id="hint" class="hidden">DRAG BACK TO AIM<br />RELEASE TO PUTT</div>
+        <div id="power" class="hidden"><div id="power-fill"></div></div>
+        <button id="btn-next" class="btn big hidden">NEXT HOLE</button>
+      </div>
+
+      <div id="screen-title" class="screen">
+        <div class="title-card">
+          <h1><span>PIXEL</span><span>GOLF</span></h1>
+          <p class="subtitle">9 HOLES OF MINI GOLF</p>
+          <button id="btn-play" class="btn big">PLAY</button>
+          <p id="title-best"></p>
+        </div>
+        <p class="title-foot">DRAG · AIM · PUTT</p>
+      </div>
+
+      <div id="screen-menu" class="screen hidden">
+        <div class="panel">
+          <h2>PAUSED</h2>
+          <button id="btn-resume" class="btn">RESUME</button>
+          <button id="btn-restart" class="btn">RESTART HOLE</button>
+          <button id="btn-scorecard" class="btn">SCORECARD</button>
+          <button id="btn-sound" class="btn">SOUND: ON</button>
+          <button id="btn-quit" class="btn ghost">QUIT</button>
+        </div>
+      </div>
+
+      <div id="screen-card" class="screen hidden">
+        <div class="panel">
+          <h2 id="card-title">SCORECARD</h2>
+          <table id="card-table"></table>
+          <p id="card-summary"></p>
+          <button id="btn-card-close" class="btn">BACK</button>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
