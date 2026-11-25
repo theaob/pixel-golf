@@ -1,0 +1,9 @@
+{
+  "appId": "io.github.theaob.pixelgolf",
+  "appName": "Pixel Golf",
+  "webDir": "dist",
+  "backgroundColor": "#2b6a4f",
+  "android": {
+    "backgroundColor": "#2b6a4f"
+  }
+}

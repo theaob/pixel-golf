@@ -317,7 +317,7 @@ h1 span:last-child {
 }
 
 .subtitle,
-#title-best,
+.course-best,
 .title-foot {
   font-size: 10px;
   line-height: 1.8;
@@ -330,9 +330,10 @@ h1 span:last-child {
 .subtitle {
   margin: 0 0 26px;
 }
-#title-best {
+.course-best {
   color: var(--accent);
   min-height: 1em;
+  margin: -4px 0 18px;
 }
 .title-foot {
   position: absolute;

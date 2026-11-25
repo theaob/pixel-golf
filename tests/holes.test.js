@@ -1,6 +1,6 @@
 // Headless check: every hole parses, the ball never escapes the course, and a
 // simple greedy "bot" can sink every hole within a reasonable number of strokes.
-import { LEVELS } from '../src/levels.js';
+import { COURSES } from '../src/levels.js';
 import { parseLevel, tileAt, T } from '../src/course.js';
 import { createBall, shoot, stepBall, DT } from '../src/physics.js';
 
@@ -59,7 +59,7 @@ function simulate(course, ball, dir, power, t0) {
 
 let failed = 0;
 let totalStrokes = 0, totalPar = 0;
-for (const level of LEVELS) {
+for (const level of COURSES.flatMap((c) => c.holes)) {
   const course = parseLevel(level);
   const df = distanceField(course);
   let ball = createBall(course.tee.x, course.tee.z);

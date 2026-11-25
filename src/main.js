@@ -1,13 +1,19 @@
 import * as THREE from 'three';
+import '@fontsource/press-start-2p/400.css';
 import './style.css';
-import { LEVELS } from './levels.js';
+import { COURSES } from './levels.js';
 import { parseLevel, heightAt, BALL_R, T, tileAt } from './course.js';
 import { createBall, shoot, stepBall, DT } from './physics.js';
 import { PixelRenderer } from './renderer.js';
 import { CourseView, createBallMesh, PALETTE } from './world.js';
 import { Sfx } from './audio.js';
+import { native } from './native.js';
 
 const MAX_STROKES = 10;
+let course = COURSES[0]; // the nine being played
+let LEVELS = course.holes;
+const holeNo = (i) => course.firstHole + i;
+const bestKey = (c) => `pg-best-${c.id}`;
 const $ = (id) => document.getElementById(id);
 
 // ---------------------------------------------------------------------------
@@ -210,11 +216,13 @@ function startHole(i) {
   cam.wpp = ov.wpp;
   cam.target.copy(ov.target);
   game.introTimer = 1.6;
-  showBanner(`HOLE ${i + 1}`, `${LEVELS[i].name.toUpperCase()}<br>PAR ${LEVELS[i].par}`, 2200);
+  showBanner(`HOLE ${holeNo(i)}`, `${LEVELS[i].name.toUpperCase()}<br>PAR ${LEVELS[i].par}`, 2200);
   setHint(true);
 }
 
-function newGame() {
+function newGame(courseIndex = 0) {
+  course = COURSES[courseIndex];
+  LEVELS = course.holes;
   game.scores = [];
   hideScreens();
   $('hud').classList.remove('hidden');
@@ -262,9 +270,9 @@ function finishRound() {
   const total = game.scores.reduce((a, b) => a + b, 0);
   let best = null;
   try {
-    best = Number(localStorage.getItem('pg-best')) || null;
+    best = Number(localStorage.getItem(bestKey(course))) || null;
     if (!best || total < best) {
-      localStorage.setItem('pg-best', String(total));
+      localStorage.setItem(bestKey(course), String(total));
     }
   } catch {}
   const isBest = !best || total < best;
@@ -275,9 +283,7 @@ function finishRound() {
 // Physics events -> feedback
 
 function vibrate(ms) {
-  try {
-    navigator.vibrate?.(ms);
-  } catch {}
+  native.vibrate(ms);
 }
 
 function handleEvents(events) {
@@ -495,7 +501,7 @@ function powerColor(p) {
 // HUD + screens
 
 function updateHud() {
-  $('hud-hole').textContent = `HOLE ${game.holeIndex + 1}/${LEVELS.length}`;
+  $('hud-hole').textContent = `HOLE ${holeNo(game.holeIndex)}`;
   $('hud-par').textContent = `PAR ${LEVELS[game.holeIndex].par}`;
   $('hud-strokes').textContent = `SHOTS ${game.strokes}`;
 }
@@ -515,7 +521,7 @@ function hideBanner() {
   $('banner').classList.add('hidden');
 }
 function setHint(on) {
-  $('hint').classList.toggle('hidden', !on || game.holeIndex > 1);
+  $('hint').classList.toggle('hidden', !on || course.id !== 'front' || game.holeIndex > 1);
 }
 
 function hideScreens() {
@@ -526,7 +532,7 @@ function showScorecard(final, isBest) {
   const rows = LEVELS.map((l, i) => {
     const s = game.scores[i];
     const cls = s == null ? '' : s < l.par ? 'under' : s === l.par ? 'even' : 'over';
-    return `<tr><td>${i + 1}</td><td>${l.par}</td><td class="${cls}">${s ?? '-'}</td></tr>`;
+    return `<tr><td>${holeNo(i)}</td><td>${l.par}</td><td class="${cls}">${s ?? '-'}</td></tr>`;
   }).join('');
   const played = LEVELS.map((l, i) => (game.scores[i] != null ? l.par : 0)).reduce((a, b) => a + b, 0);
   const total = game.scores.reduce((a, b) => a + (b || 0), 0);
@@ -536,7 +542,7 @@ function showScorecard(final, isBest) {
   $('card-summary').textContent = final
     ? `${diff === 0 ? 'EVEN PAR' : diff > 0 ? `+${diff}` : diff} ${isBest ? '· NEW BEST!' : ''}`
     : `${diff === 0 ? 'EVEN' : diff > 0 ? `+${diff}` : diff} SO FAR`;
-  $('card-title').textContent = final ? 'ROUND COMPLETE' : 'SCORECARD';
+  $('card-title').textContent = final ? `${course.name.toUpperCase()} DONE` : 'SCORECARD';
   $('btn-card-close').textContent = final ? 'PLAY AGAIN' : 'BACK';
   $('btn-card-close').dataset.final = final ? '1' : '';
   hideScreens();
@@ -551,11 +557,18 @@ function showTitle() {
   $('btn-next').classList.add('hidden');
   $('hud').classList.add('hidden');
   $('screen-title').classList.remove('hidden');
-  let best = null;
-  try {
-    best = localStorage.getItem('pg-best');
-  } catch {}
-  $('title-best').textContent = best ? `BEST ROUND: ${best}` : '';
+  COURSES.forEach((c, ci) => {
+    let best = null;
+    try {
+      best = localStorage.getItem(bestKey(c));
+      // Scores saved before there were two nines belong to the front nine.
+      if (!best && c.id === 'front') best = localStorage.getItem('pg-best');
+    } catch {}
+    const par = c.holes.reduce((a, l) => a + l.par, 0);
+    $(`best-${ci}`).textContent = best ? `BEST ${best} · PAR ${par}` : `PAR ${par}`;
+  });
+  course = COURSES[0];
+  LEVELS = course.holes;
   loadHole(0);
   const ov = overviewFor(game.course);
   cam.wpp = ov.wpp;
@@ -577,7 +590,8 @@ function bind(id, fn) {
     fn();
   });
 }
-bind('btn-play', newGame);
+bind('btn-play-0', () => newGame(0));
+bind('btn-play-1', () => newGame(1));
 bind('btn-next', nextHole);
 bind('btn-menu', () => setPaused(!game.paused));
 bind('btn-resume', () => setPaused(false));
@@ -741,6 +755,20 @@ window.__pixelGolf = { game, shootAt: (dx, dz, p) => { aim.dir.set(dx, dz).norma
 showTitle();
 frame();
 
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
+// Android: hardware back button and app backgrounding.
+native.onBack(() => {
+  if (!$('screen-card').classList.contains('hidden')) {
+    $('btn-card-close').click();
+  } else if (game.state === 'title') {
+    native.exit();
+  } else {
+    setPaused(!game.paused);
+  }
+});
+native.onBackground(() => {
+  if (game.state !== 'title' && game.state !== 'done') setPaused(true);
+});
+
+if ('serviceWorker' in navigator && import.meta.env.PROD && !native.isNative) {
   window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
 }
