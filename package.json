@@ -7,9 +7,10 @@
     "dev": "vite --host",
     "build": "vite build",
     "preview": "vite preview --host",
-    "test": "node tests/progress.test.js && node tests/holes.test.js && node tests/daily.test.js 45"
+    "test": "node tests/progress.test.js && node tests/ads.test.js && node tests/holes.test.js && node tests/daily.test.js 45"
   },
   "dependencies": {
+    "@capacitor-community/admob": "8.4.2",
     "@capacitor/android": "8.6.2",
     "@capacitor/app": "8.1.2",
     "@capacitor/core": "8.6.2",

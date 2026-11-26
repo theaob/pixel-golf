@@ -29,9 +29,10 @@ export function createBall(x, z) {
   return { x, z, vx: 0, vz: 0, moving: false, time: 0, lastSafe: { x, z } };
 }
 
-export function shoot(ball, dirX, dirZ, power) {
+// `clubPower` scales the top speed (clubs like the Bruiser hit harder).
+export function shoot(ball, dirX, dirZ, power, clubPower = 1) {
   const len = Math.hypot(dirX, dirZ) || 1;
-  const s = Math.max(0, Math.min(1, power)) * MAX_SPEED;
+  const s = Math.max(0, Math.min(1, power)) * MAX_SPEED * clubPower;
   ball.vx = (dirX / len) * s;
   ball.vz = (dirZ / len) * s;
   ball.moving = true;

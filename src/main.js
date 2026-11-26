@@ -5,11 +5,12 @@ import { COURSES } from './levels.js';
 import { parseLevel, heightAt, BALL_R, T, tileAt } from './course.js';
 import { createBall, shoot, stepBall, DT } from './physics.js';
 import { PixelRenderer } from './renderer.js';
-import { CourseView, createBallMesh, setBallSkin, PALETTE } from './world.js';
+import { CourseView, createBallMesh, setBallSkin, createClubMesh, setClubColors, PALETTE } from './world.js';
 import { Sfx } from './audio.js';
 import { native } from './native.js';
 import { dailyLevel, dateKey } from './daily.js';
-import { createProgress, SKINS, SAVE_KEY } from './progress.js';
+import { createProgress, SKINS, CLUBS, FREE_COINS_AD, SAVE_KEY } from './progress.js';
+import { createAds } from './ads.js';
 import { ICONS, stars as starIcons } from './icons.js';
 import { themeFor } from './themes.js';
 
@@ -43,6 +44,13 @@ const storage = {
 };
 const progress = createProgress(storage);
 progress.onChange((d) => native.backup(JSON.stringify(d)));
+
+const ads = createAds({
+  isNative: native.isNative,
+  progress,
+  mock: import.meta.env.DEV || new URLSearchParams(location.search).get('ads') === 'mock',
+});
+ads.init().then(() => refreshAdButtons());
 
 // ---------------------------------------------------------------------------
 // Renderer, scene, camera
@@ -136,7 +144,7 @@ const shadowBlob = new THREE.Mesh(
 shadowBlob.rotation.x = -Math.PI / 2;
 scene.add(shadowBlob);
 
-const AIM_DOTS = 16;
+const AIM_DOTS = 48;
 const aimGroup = new THREE.Group();
 const dotGeo = new THREE.PlaneGeometry(0.09, 0.09);
 dotGeo.rotateX(-Math.PI / 2);
@@ -152,6 +160,11 @@ const aimRing = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xf
 aimGroup.add(aimRing);
 aimGroup.visible = false;
 scene.add(aimGroup);
+
+const clubMesh = createClubMesh(progress.club());
+clubMesh.visible = false;
+scene.add(clubMesh);
+const swing = { t: 0, from: 0 }; // swing animation after a shot
 
 const particles = [];
 const partGeo = new THREE.BoxGeometry(0.06, 0.06, 0.06);
@@ -245,6 +258,9 @@ function loadHole(i) {
 
 function startHole(i) {
   loadHole(i);
+  game.preShot = null;
+  game.mulliganUsed = false;
+  aim.dir.set(game.course.hole.x - game.course.tee.x, game.course.hole.z - game.course.tee.z).normalize();
   game.state = 'aim';
   cam.overview = false;
   // Start in overview, then glide to the ball.
@@ -301,6 +317,8 @@ function holeFinished(pickedUp = false) {
   const good = strokes <= par;
   const lockedBefore = COURSES.filter((c) => !isUnlocked(c));
   const reward = course.daily ? null : progress.recordHole(holeId(game.holeIndex), strokes, par, pickedUp);
+  ads.holeFinished();
+  game.lastReward = reward;
   const newlyOpen = lockedBefore.filter(isUnlocked);
   if (newlyOpen.length) setTimeout(() => toast(`NEW COURSE UNLOCKED!<br>${newlyOpen[0].name.toUpperCase()}`, 3200), 1500);
   setTimeout(() => {
@@ -312,6 +330,9 @@ function holeFinished(pickedUp = false) {
     }
     showBanner(pickedUp ? 'PICKED UP' : resultName(strokes, par), sub, 0);
     $('btn-next').classList.remove('hidden');
+    const canDouble = ads.available && reward && reward.coins > 0;
+    $('btn-double').classList.toggle('hidden', !canDouble);
+    if (canDouble) $('btn-double').innerHTML = `${ICONS.play} WATCH AD: +${reward.coins} ${ICONS.coin}`;
     $('btn-next').textContent = course.daily
       ? 'RESULTS'
       : game.holeIndex === LEVELS.length - 1
@@ -321,13 +342,16 @@ function holeFinished(pickedUp = false) {
   setHint(false);
 }
 
-function nextHole() {
+async function nextHole() {
   sfx.click();
   $('btn-next').classList.add('hidden');
+  $('btn-double').classList.add('hidden');
   hideBanner();
   if (game.holeIndex >= LEVELS.length - 1) {
     finishRound();
   } else {
+    // A natural break: an interstitial may show here, within the pacing rules.
+    await ads.maybeInterstitial('hole');
     startHole(game.holeIndex + 1);
   }
 }
@@ -340,6 +364,7 @@ function finishRound() {
   }
   const total = game.scores.reduce((a, b) => a + b, 0);
   const { isBest } = progress.recordRound(course.id, total);
+  endTrial();
   showScorecard(true, isBest);
 }
 
@@ -350,7 +375,15 @@ function untilMidnight() {
   return `${Math.floor(mins / 60)}H ${String(mins % 60).padStart(2, '0')}M`;
 }
 
+function endTrial() {
+  if (progress.trialClub) {
+    progress.trialClub = null;
+    setClubColors(clubMesh, progress.club());
+  }
+}
+
 function showDailyResult() {
+  endTrial();
   const key = game.dailyKey;
   const level = course.holes[0];
   const strokes = game.scores[0];
@@ -365,6 +398,9 @@ function showDailyResult() {
     (res.first ? '' : `<small>REPLAY: ${strokes} (NOT COUNTED)</small>`);
   $('daily-streak').innerHTML = `${ICONS.flame}${streak}`;
   $('daily-coins').innerHTML = res.first ? `${ICONS.coin}+${res.coins}` : '-';
+  game.dailyReward = res.first ? res.coins : 0;
+  $('btn-daily-double').classList.toggle('hidden', !(ads.available && game.dailyReward > 0));
+  $('btn-daily-double').innerHTML = `${ICONS.play} WATCH AD: +${game.dailyReward} ${ICONS.coin}`;
   $('daily-next').textContent = `NEXT DAILY HOLE IN ${untilMidnight()}`;
   game.shareText =
     `Pixel Golf Daily #${n} ⛳\n${level.name} · Par ${level.par}\n` +
@@ -585,6 +621,48 @@ function updateAim(x, y) {
   }
 }
 
+// Dots along the shot. Basic clubs draw a straight line whose length follows
+// power; preview clubs simulate the real shot through a few bounces.
+const DOT_STEP = 0.17;
+function aimPath() {
+  const b = game.ball;
+  const club = progress.club();
+  const pts = [];
+  if (!club.preview) {
+    const n = Math.min(AIM_DOTS, Math.ceil(aim.power * 16 * club.guide));
+    for (let i = 0; i < n; i++) {
+      const dist = 0.26 + i * DOT_STEP;
+      pts.push([b.x + aim.dir.x * dist, b.z + aim.dir.y * dist]);
+    }
+    return pts;
+  }
+  const sim = createBall(b.x, b.z);
+  shoot(sim, aim.dir.x, aim.dir.y, aim.power, club.power);
+  const maxLen = 2.7 * club.guide * (1 + club.preview * 0.6);
+  let travelled = 0;
+  let sinceDot = DOT_STEP - 0.26;
+  let bounces = 0;
+  const events = [];
+  for (let step = 0; step < 240 * 4 && sim.moving; step++) {
+    const px = sim.x, pz = sim.z;
+    events.length = 0;
+    stepBall(sim, game.course, game.time + step * DT, events);
+    if (events.some((e) => e.type === 'portal' || e.type === 'water' || e.type === 'sink')) break;
+    bounces += events.filter((e) => e.type === 'wall' || e.type === 'bumper' || e.type === 'spinner').length;
+    if (bounces > club.preview) break;
+    const d = Math.hypot(sim.x - px, sim.z - pz);
+    travelled += d;
+    sinceDot += d;
+    if (sinceDot >= DOT_STEP) {
+      sinceDot = 0;
+      pts.push([sim.x, sim.z]);
+      if (pts.length >= AIM_DOTS) break;
+    }
+    if (travelled > maxLen) break;
+  }
+  return pts;
+}
+
 function cancelAim() {
   aim.active = false;
   aim.id = null;
@@ -592,8 +670,11 @@ function cancelAim() {
 }
 
 function takeShot() {
+  game.preShot = { x: game.ball.x, z: game.ball.z, strokes: game.strokes };
   game.strokes += 1;
-  shoot(game.ball, aim.dir.x, aim.dir.y, aim.power);
+  shoot(game.ball, aim.dir.x, aim.dir.y, aim.power, progress.club().power);
+  swing.t = 0.45;
+  swing.from = -(0.12 + 0.55 * aim.power);
   sfx.putt(aim.power);
   vibrate(12);
   game.state = 'roll';
@@ -601,27 +682,44 @@ function takeShot() {
   updateHud();
 }
 
-function updateAimVisual() {
+function updateAimVisual(dt = 1 / 60) {
   const show = aim.active && aim.power > 0 && canAim();
   aimGroup.visible = canAim();
   const b = game.ball;
   const by = heightAt(game.course, b.x, b.z);
   aimRing.position.set(b.x, by + 0.012, b.z);
   aimRing.material.color.set(show ? powerColor(aim.power) : 0xffffff);
-  const n = show ? Math.ceil(aim.power * AIM_DOTS) : 0;
   const col = powerColor(aim.power);
+  const pts = show ? aimPath() : [];
   for (let i = 0; i < AIM_DOTS; i++) {
     const d = aimDots[i];
-    d.visible = i < n;
+    d.visible = i < pts.length;
     if (!d.visible) continue;
-    const dist = 0.26 + i * 0.17;
-    const x = b.x + aim.dir.x * dist;
-    const z = b.z + aim.dir.y * dist;
+    const [x, z] = pts[i];
     const t = tileAt(game.course, x, z);
     const y = t && t.type !== T.VOID ? heightAt(game.course, x, z) : by;
     d.position.set(x, y + 0.015, z);
-    d.material.color.set(i === n - 1 ? 0xffffff : col);
+    d.material.color.set(i === pts.length - 1 ? 0xffffff : col);
   }
+
+  // The putter sits behind the ball while aiming, pulls back with power,
+  // then swings through after the shot.
+  const club = clubMesh.userData;
+  if (swing.t > 0) {
+    swing.t = Math.max(0, swing.t - dt);
+    const k = Math.min(1, (0.45 - swing.t) / 0.1);
+    club.swing.rotation.z = swing.from + (0.7 - swing.from) * k;
+    clubMesh.visible = swing.t > 0.05;
+  } else {
+    clubMesh.visible = canAim();
+    const pull = aim.active && aim.power > 0 ? -(0.12 + 0.55 * aim.power) : 0;
+    club.swing.rotation.z += (pull - club.swing.rotation.z) * 0.35;
+    if (clubMesh.visible) {
+      clubMesh.position.set(b.x, by, b.z);
+      clubMesh.rotation.y = Math.atan2(-aim.dir.y, aim.dir.x);
+    }
+  }
+  $('btn-undo').classList.toggle('hidden', !(ads.available && canAim() && game.preShot && !game.mulliganUsed));
   const bar = $('power');
   bar.classList.toggle('hidden', !show);
   $('power-fill').style.width = `${Math.round(aim.power * 100)}%`;
@@ -726,9 +824,19 @@ function refreshTitle() {
       : `#${n} · PAR ${daily.par}${streak ? '<br>KEEP YOUR STREAK GOING!' : ''}`;
   $('btn-daily').querySelector('.badge')?.remove();
   if (done == null) $('btn-daily').insertAdjacentHTML('beforeend', '<span class="badge">NEW</span>');
+  refreshAdButtons();
   const all = COURSES.reduce((a, c) => a + c.holes.length * 3, 0);
   const open = COURSES.filter(isUnlocked).length;
   $('courses-sub').innerHTML = `${ICONS.star}${totalStars()}/${all} · ${open}/${COURSES.length} OPEN`;
+}
+
+// Ad-dependent buttons appear only once an ad provider is ready.
+function refreshAdButtons() {
+  const today = dateKey();
+  const save = ads.available && progress.streakSavable(today);
+  $('btn-save-streak').classList.toggle('hidden', !save);
+  if (save) $('btn-save-streak').innerHTML = `${ICONS.play} SAVE YOUR ${ICONS.flame}${progress.data.daily.streak} STREAK`;
+  $('btn-privacy').classList.toggle('hidden', !ads.privacyRequired);
 }
 
 function renderCourses() {
@@ -784,10 +892,32 @@ setInterval(() => {
   } else refreshTitle();
 }, 15000);
 
+let shopTab = 'balls';
 function renderShop() {
   $('shop-coins').innerHTML = `${ICONS.coin}${progress.data.coins}`;
-  const eq = progress.equipped().id;
+  for (const b of document.querySelectorAll('.shop-tab')) b.classList.toggle('active', b.dataset.tab === shopTab);
+  const left = progress.freeCoinsLeft(dateKey());
+  $('btn-free-coins').classList.toggle('hidden', !ads.available);
+  $('btn-free-coins').disabled = left <= 0;
+  $('btn-free-coins').innerHTML = left > 0
+    ? `${ICONS.play} FREE +${FREE_COINS_AD.amount} ${ICONS.coin} <small>(${left} LEFT TODAY)</small>`
+    : 'FREE COINS: BACK TOMORROW';
   const hex = (c) => `#${c.toString(16).padStart(6, '0')}`;
+  if (shopTab === 'clubs') {
+    const eq = progress.data.clubs.equipped;
+    $('shop-grid').innerHTML = CLUBS.map((c) => {
+      const owned = progress.ownsClub(c.id);
+      const label = owned ? (c.id === eq ? 'EQUIPPED' : 'TAP TO USE') : `${ICONS.coin}${c.price}`;
+      const trying = progress.trialClub === c.id;
+      return `<button class="skin club${c.id === eq ? ' equipped' : ''}${owned ? '' : ' locked'}" data-club="${c.id}">
+        <span class="club-icon" style="--head:${hex(c.head)};--grip:${hex(c.grip)}"></span>
+        ${c.name}<br><span class="perk">${c.perk}</span><br><span class="price">${label}</span>
+        ${!owned && ads.available ? `<span class="try" data-try="${c.id}">${trying ? 'TRYING NEXT ROUND' : `${ICONS.play} TRY 1 ROUND`}</span>` : ''}
+      </button>`;
+    }).join('');
+    return;
+  }
+  const eq = progress.equipped().id;
   $('shop-grid').innerHTML = SKINS.map((s) => {
     const owned = progress.owns(s.id);
     const label = owned ? (s.id === eq ? 'EQUIPPED' : 'TAP TO USE') : `${ICONS.coin}${s.price}`;
@@ -797,10 +927,39 @@ function renderShop() {
   }).join('');
 }
 
-$('shop-grid').addEventListener('click', (e) => {
+$('shop-grid').addEventListener('click', async (e) => {
   const btn = e.target.closest('.skin');
   if (!btn) return;
   sfx.unlock();
+  const tryId = e.target.closest('[data-try]')?.dataset.try;
+  if (tryId) {
+    if (progress.trialClub === tryId) return;
+    if (await ads.rewarded()) {
+      progress.trialClub = tryId;
+      setClubColors(clubMesh, progress.club());
+      sfx.fanfare(true);
+      toast(`${CLUBS.find((c) => c.id === tryId).name} IS YOURS<br>FOR THE NEXT ROUND`);
+    }
+    renderShop();
+    return;
+  }
+  if (btn.dataset.club) {
+    const c = CLUBS.find((x) => x.id === btn.dataset.club);
+    if (progress.ownsClub(c.id)) {
+      progress.equipClub(c.id);
+      sfx.click();
+    } else if (progress.buyClub(c.id)) {
+      sfx.fanfare(true);
+      toast(`UNLOCKED ${c.name}!`);
+    } else {
+      sfx.wall(1);
+      toast(`NEED ${c.price - progress.data.coins} MORE ${ICONS.coin}`);
+    }
+    setClubColors(clubMesh, progress.club());
+    renderShop();
+    refreshTitle();
+    return;
+  }
   const id = btn.dataset.id;
   const skin = SKINS.find((s) => s.id === id);
   if (progress.owns(id)) {
@@ -836,6 +995,66 @@ function bind(id, fn) {
   });
 }
 bind('btn-daily', startDaily);
+bind('btn-save-streak', async () => {
+  if ((await ads.rewarded()) && progress.saveStreak(dateKey())) {
+    sfx.fanfare(true);
+    toast(`${ICONS.flame} STREAK SAVED!<br>PLAY TODAY'S HOLE TO KEEP IT`, 3000);
+  }
+  refreshTitle();
+});
+bind('btn-double', async () => {
+  const r = game.lastReward;
+  if (!r || !r.coins) return;
+  if (await ads.rewarded()) {
+    progress.addCoins(r.coins);
+    toast(`+${r.coins} ${ICONS.coin} BONUS!`);
+    game.lastReward = null;
+    $('btn-double').classList.add('hidden');
+  }
+});
+bind('btn-daily-double', async () => {
+  if (!game.dailyReward) return;
+  if (await ads.rewarded()) {
+    progress.addCoins(game.dailyReward);
+    $('daily-coins').innerHTML = `${ICONS.coin}+${game.dailyReward * 2}`;
+    toast(`+${game.dailyReward} ${ICONS.coin} BONUS!`);
+    game.dailyReward = 0;
+    $('btn-daily-double').classList.add('hidden');
+  }
+});
+bind('btn-undo', async () => {
+  if (!game.preShot || game.mulliganUsed || !canAim()) return;
+  if (await ads.rewarded()) {
+    const p = game.preShot;
+    game.ball.x = p.x;
+    game.ball.z = p.z;
+    game.strokes = p.strokes;
+    game.mulliganUsed = true;
+    game.preShot = null;
+    updateHud();
+    toast('MULLIGAN! TAKE IT AGAIN');
+  }
+});
+bind('btn-free-coins', async () => {
+  if (progress.freeCoinsLeft(dateKey()) <= 0) return;
+  if (await ads.rewarded()) {
+    const n = progress.claimFreeCoins(dateKey());
+    if (n) {
+      sfx.fanfare(true);
+      toast(`+${n} ${ICONS.coin}`);
+    }
+  }
+  renderShop();
+  refreshTitle();
+});
+bind('btn-privacy', () => ads.showPrivacyOptions());
+for (const tab of document.querySelectorAll('.shop-tab')) {
+  tab.addEventListener('click', () => {
+    shopTab = tab.dataset.tab;
+    sfx.click();
+    renderShop();
+  });
+}
 bind('btn-shop', () => {
   renderShop();
   hideScreens();
@@ -849,7 +1068,10 @@ bind('btn-share', async () => {
 bind('btn-remind', async () => {
   if (await enableReminders()) $('btn-remind').classList.add('hidden');
 });
-bind('btn-daily-done', showTitle);
+bind('btn-daily-done', async () => {
+  await ads.maybeInterstitial('round');
+  showTitle();
+});
 bind('btn-reminders', async () => {
   if (progress.data.reminders.enabled) {
     progress.setReminders(false);
@@ -883,14 +1105,16 @@ bind('btn-sound', () => {
 });
 bind('btn-quit', () => {
   setPaused(false);
+  endTrial();
   showTitle();
 });
 bind('btn-view', () => {
   cam.overview = !cam.overview;
   game.introTimer = 0;
 });
-bind('btn-card-close', () => {
+bind('btn-card-close', async () => {
   if ($('btn-card-close').dataset.final) {
+    await ads.maybeInterstitial('round');
     showTitle();
   } else {
     hideScreens();
@@ -986,7 +1210,7 @@ function update(dt) {
     f.position.y += (game.view.cupY + target - f.position.y) * Math.min(1, dt * 10);
   }
 
-  updateAimVisual();
+  updateAimVisual(dt);
 
   // Camera.
   let goalTarget, goalWpp;

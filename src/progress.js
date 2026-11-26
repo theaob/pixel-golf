@@ -15,6 +15,20 @@ export const SKINS = [
   { id: 'gold', name: 'GOLD', price: 500, a: 0xffe066, b: 0xc9932b, trail: 0xfff3b0 },
 ];
 
+// Clubs change how shots play. `power` scales max shot speed, `guide` the
+// aim line length, `preview` how many bounces the aim line simulates.
+export const CLUBS = [
+  { id: 'classic', name: 'CLASSIC', price: 0, power: 1, guide: 1, preview: 0, head: 0x9aa3b5, grip: 0x1a1426, perk: 'STANDARD' },
+  { id: 'longshot', name: 'LONGSHOT', price: 120, power: 1, guide: 1.6, preview: 0, head: 0x5ec8ff, grip: 0x2a5fd6, perk: 'LONG AIM LINE' },
+  { id: 'bruiser', name: 'BRUISER', price: 200, power: 1.2, guide: 1, preview: 0, head: 0xff6a3d, grip: 0x5b2a1a, perk: '+20% POWER' },
+  { id: 'scout', name: 'SCOUT', price: 300, power: 1, guide: 1.2, preview: 1, head: 0x7ef0c4, grip: 0x1f6b52, perk: 'SEES 1 BOUNCE' },
+  { id: 'pro', name: 'PRO', price: 550, power: 1.1, guide: 1.3, preview: 2, head: 0xc9a8ff, grip: 0x3b2a6b, perk: 'SEES 2 BOUNCES' },
+  { id: 'golden', name: 'GOLDEN', price: 1000, power: 1.15, guide: 1.5, preview: 3, coinBonus: 0.25, head: 0xffe066, grip: 0x8a5a12, perk: '3 BOUNCES +25% COINS' },
+];
+
+// Daily caps for rewarded ads that hand out coins directly.
+export const FREE_COINS_AD = { amount: 25, perDay: 5 };
+
 // Stars for a finished hole: 3 under par, 2 at par, 1 otherwise, 0 if picked up.
 export function starsFor(strokes, par, pickedUp = false) {
   if (pickedUp) return 0;
@@ -32,6 +46,11 @@ function fresh() {
     daily: { lastKey: null, streak: 0, best: 0, results: {} },
     gift: { lastKey: null, streak: 0 },
     skins: { owned: ['classic'], equipped: 'classic' },
+    clubs: { owned: ['classic'], equipped: 'classic' },
+    stats: { holes: 0, rounds: 0 },
+    adsDay: { key: null, freeCoins: 0 },
+    streakSaved: null, // date key of the last missed day an ad rescued
+    adsRemoved: false,
     reminders: { asked: false, enabled: false },
   };
 }
@@ -40,7 +59,11 @@ export function createProgress(storage) {
   let data = fresh();
   try {
     const raw = storage.getItem(SAVE_KEY);
-    if (raw) data = { ...fresh(), ...JSON.parse(raw) };
+    if (raw) {
+      const base = fresh();
+      const saved = JSON.parse(raw);
+      data = { ...base, ...saved, stats: { ...base.stats, ...saved.stats } };
+    }
     else {
       // Migrate best rounds saved by earlier versions.
       for (const [id, k] of [['front', 'pg-best-front'], ['front', 'pg-best'], ['back', 'pg-best-back']]) {
@@ -90,11 +113,19 @@ export function createProgress(storage) {
       let coins = stars * 2;
       if (stars > prevStars) coins += (stars - prevStars) * 10; // first-time star bonus
       if (strokes === 1 && !pickedUp) coins += 15;
+      const bonus = Math.round(coins * (api.club().coinBonus || 0));
+      coins += bonus;
       data.coins += coins;
+      data.stats.holes += 1;
       persist();
       return { stars, prevStars, coins };
     },
+    addCoins(n) {
+      data.coins += n;
+      persist();
+    },
     recordRound(courseId, total) {
+      data.stats.rounds += 1;
       const prev = data.rounds[courseId] ?? null;
       const isBest = prev == null || total < prev;
       if (isBest) data.rounds[courseId] = total;
@@ -129,6 +160,59 @@ export function createProgress(storage) {
       data.coins += coins;
       persist();
       return { first: true, coins, streak };
+    },
+
+    // A streak broken by exactly one missed day can be rescued (once per gap).
+    streakSavable(today) {
+      const { lastKey, streak } = data.daily;
+      const missed = addDays(today, -1);
+      return streak >= 2 && lastKey === addDays(today, -2) && data.streakSaved !== missed && data.daily.results[today] == null;
+    },
+    saveStreak(today) {
+      if (!api.streakSavable(today)) return false;
+      const missed = addDays(today, -1);
+      data.daily.lastKey = missed; // as if yesterday's hole had been played
+      data.streakSaved = missed;
+      persist();
+      return true;
+    },
+
+    // ---- rewarded "free coins" (capped per day)
+    freeCoinsLeft(today) {
+      return data.adsDay.key === today ? Math.max(0, FREE_COINS_AD.perDay - data.adsDay.freeCoins) : FREE_COINS_AD.perDay;
+    },
+    claimFreeCoins(today) {
+      if (api.freeCoinsLeft(today) <= 0) return 0;
+      if (data.adsDay.key !== today) data.adsDay = { key: today, freeCoins: 0 };
+      data.adsDay.freeCoins += 1;
+      data.coins += FREE_COINS_AD.amount;
+      persist();
+      return FREE_COINS_AD.amount;
+    },
+
+    // ---- clubs (a trial club from a rewarded ad overrides the equipped one)
+    trialClub: null,
+    club() {
+      const id = api.trialClub ?? data.clubs.equipped;
+      return CLUBS.find((c) => c.id === id) ?? CLUBS[0];
+    },
+    ownsClub(id) {
+      return data.clubs.owned.includes(id);
+    },
+    buyClub(id) {
+      const club = CLUBS.find((c) => c.id === id);
+      if (!club || api.ownsClub(id) || data.coins < club.price) return false;
+      data.coins -= club.price;
+      data.clubs.owned.push(id);
+      data.clubs.equipped = id;
+      persist();
+      return true;
+    },
+    equipClub(id) {
+      if (!api.ownsClub(id)) return false;
+      data.clubs.equipped = id;
+      persist();
+      return true;
     },
 
     // ---- daily login gift (grows with consecutive days, capped)

@@ -27,6 +27,9 @@
             <div class="pill accent" id="hud-strokes">SHOTS 0</div>
           </div>
           <div class="hud-buttons">
+            <button class="icon-btn hidden" id="btn-undo" aria-label="Mulligan: watch an ad to retake your last shot">
+              <svg viewBox="0 0 9 9" shape-rendering="crispEdges"><path d="M2 1h1v1H2zM1 2h1v1H1zM0 3h6v1H0zM1 4h1v1H1zM2 5h1v1H2zM6 4h1v1H6zM7 5h1v2H7zM6 7h1v1H6zM3 8h3v1H3z"/></svg>
+            </button>
             <button class="icon-btn" id="btn-view" aria-label="Toggle course overview">
               <svg viewBox="0 0 9 9" shape-rendering="crispEdges"><path d="M0 4h1v1H0zM1 3h1v1H1zM1 5h1v1H1zM2 2h5v1H2zM2 6h5v1H2zM7 3h1v1H7zM7 5h1v1H7zM8 4h1v1H8zM3 4h3v1H3zM4 3h1v3H4z"/></svg>
             </button>
@@ -38,6 +41,7 @@
         <div id="banner" class="hidden"></div>
         <div id="hint" class="hidden">DRAG BACK TO AIM<br />RELEASE TO PUTT</div>
         <div id="power" class="hidden"><div id="power-fill"></div></div>
+        <button id="btn-double" class="btn ad hidden"></button>
         <button id="btn-next" class="btn big hidden">NEXT HOLE</button>
       </div>
 
@@ -52,11 +56,12 @@
             <span class="daily-label">DAILY HOLE</span>
             <span class="daily-sub" id="daily-sub"></span>
           </button>
+          <button id="btn-save-streak" class="btn ad hidden"></button>
           <button id="btn-courses" class="btn big">
             <span class="daily-label">COURSES</span>
             <span class="daily-sub" id="courses-sub"></span>
           </button>
-          <button id="btn-shop" class="btn ghost">BALL SHOP</button>
+          <button id="btn-shop" class="btn ghost">PRO SHOP</button>
         </div>
       </div>
 
@@ -68,6 +73,7 @@
           <button id="btn-scorecard" class="btn">SCORECARD</button>
           <button id="btn-sound" class="btn">SOUND: ON</button>
           <button id="btn-reminders" class="btn hidden">REMINDERS: OFF</button>
+          <button id="btn-privacy" class="btn ghost hidden">PRIVACY OPTIONS</button>
           <button id="btn-quit" class="btn ghost">QUIT</button>
         </div>
       </div>
@@ -82,6 +88,7 @@
             <div><span id="daily-coins"></span><small>COINS</small></div>
           </div>
           <p class="daily-next" id="daily-next"></p>
+          <button id="btn-daily-double" class="btn ad hidden"></button>
           <button id="btn-share" class="btn">SHARE RESULT</button>
           <button id="btn-remind" class="btn ghost hidden">REMIND ME TOMORROW</button>
           <button id="btn-daily-done" class="btn ghost">DONE</button>
@@ -99,8 +106,13 @@
 
       <div id="screen-shop" class="screen hidden">
         <div class="panel">
-          <h2>BALL SHOP</h2>
+          <h2>PRO SHOP</h2>
           <p class="shop-coins" id="shop-coins"></p>
+          <div class="shop-tabs">
+            <button class="shop-tab active" data-tab="balls">BALLS</button>
+            <button class="shop-tab" data-tab="clubs">CLUBS</button>
+          </div>
+          <button id="btn-free-coins" class="btn ad hidden"></button>
           <div class="shop-grid" id="shop-grid"></div>
           <button id="btn-shop-close" class="btn">BACK</button>
         </div>

@@ -23,6 +23,7 @@ export const ICONS = {
     '<path fill="#ffd166" d="M3 0h1v2H3zM0 2h7v1H0zM1 3h5v1H1zM2 4h3v1H2zM1 5h2v1H1zM4 5h2v1H4zM0 6h2v1H0zM5 6h2v1H5z"/>',
     'star',
   ),
+  play: svg(6, 7, '<path fill="currentColor" d="M0 0h2v7H0zM2 1h2v5H2zM4 2h1v3H4zM5 3h1v1H5z"/>', 'play'),
   lock: svg(
     7,
     8,

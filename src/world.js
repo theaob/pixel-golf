@@ -694,3 +694,30 @@ export function setBallSkin(mesh, skin) {
   }
   col.needsUpdate = true;
 }
+
+// A putter: grip at the top, head resting just behind the ball. The `swing`
+// group pivots at the grip so pulling back / swinging is one rotation.
+export const CLUB_LEN = 0.86;
+export function createClubMesh(club) {
+  const root = new THREE.Group();
+  const swing = new THREE.Group();
+  swing.position.set(-BALL_R - 0.05, CLUB_LEN + 0.045, 0);
+  root.add(swing);
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, CLUB_LEN, 5), toon(0xdfe3ea));
+  shaft.position.y = -CLUB_LEN / 2;
+  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.026, 0.24, 6), toon(club.grip));
+  grip.position.y = -0.11;
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.09, 0.27), toon(club.head));
+  head.position.set(0, -CLUB_LEN, 0);
+  for (const m of [shaft, grip, head]) {
+    m.castShadow = true;
+    swing.add(m);
+  }
+  root.userData = { swing, head, grip };
+  return root;
+}
+
+export function setClubColors(mesh, club) {
+  mesh.userData.head.material = toon(club.head);
+  mesh.userData.grip.material = toon(club.grip);
+}

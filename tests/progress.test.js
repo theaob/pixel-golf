@@ -65,3 +65,35 @@ assert.equal(starsFor(10, 3, true), 0);
   assert.equal(createProgress(s).data.rounds.front, 27);
 }
 console.log('progress: ok');
+
+// Clubs, free-coin cap, streak saver.
+{
+  const p = createProgress(mem());
+  const { CLUBS } = await import('../src/progress.js');
+  assert.equal(p.club().id, 'classic');
+  assert.equal(p.buyClub('pro'), false);
+  p.addCoins(2000);
+  assert.equal(p.buyClub('golden'), true);
+  assert.equal(p.club().id, 'golden');
+  const r = p.recordHole('frost:0', 3, 3); // 2 stars: 4 + 20 = 24, +25% = 30
+  assert.equal(r.coins, 30);
+  p.trialClub = 'bruiser';
+  assert.equal(p.club().power, CLUBS.find((c) => c.id === 'bruiser').power);
+  p.trialClub = null;
+  assert.equal(p.equipClub('scout'), false); // not owned
+  for (let i = 0; i < 5; i++) assert.equal(p.claimFreeCoins('2026-12-01'), 25);
+  assert.equal(p.claimFreeCoins('2026-12-01'), 0);
+  assert.equal(p.freeCoinsLeft('2026-12-02'), 5);
+
+  p.recordDaily('2026-12-01', 3, 3);
+  p.recordDaily('2026-12-02', 3, 3);
+  assert.equal(p.streakSavable('2026-12-03'), false); // nothing missed yet
+  assert.equal(p.streakSavable('2026-12-04'), true); // missed the 3rd
+  assert.equal(p.saveStreak('2026-12-04'), true);
+  assert.equal(p.streak('2026-12-04'), 2);
+  assert.equal(p.recordDaily('2026-12-04', 3, 3).streak, 3);
+  assert.equal(p.streakSavable('2026-12-06'), true);
+  assert.equal(p.saveStreak('2026-12-06'), true);
+  assert.equal(p.streakSavable('2026-12-08'), false); // two missed days (6th, 7th) can't be rescued
+}
+console.log('progress clubs/ads: ok');
