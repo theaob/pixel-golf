@@ -9,7 +9,8 @@ import { CourseView, createBallMesh, setBallSkin, createClubMesh, setClubColors,
 import { Sfx } from './audio.js';
 import { native } from './native.js';
 import { dailyLevel, dateKey } from './daily.js';
-import { createProgress, SKINS, CLUBS, FREE_COINS_AD, SAVE_KEY } from './progress.js';
+import { createProgress, SKINS, CLUBS, CATALOG, FREE_COINS_AD, SAVE_KEY } from './progress.js';
+import { AWARDS, awardById } from './unlockables.js';
 import { createAds } from './ads.js';
 import { ICONS, stars as starIcons } from './icons.js';
 import { themeFor } from './themes.js';
@@ -232,6 +233,7 @@ function loadHole(i) {
   game.theme = theme;
   game.view = new CourseView(game.course, theme);
   scene.add(game.view.group);
+  game.view.setFlag(progress.equippedItem('flags'));
   hemi.color.set(theme.hemi[0]);
   hemi.groundColor.set(theme.hemi[1]);
   hemi.intensity = theme.hemi[2];
@@ -319,6 +321,7 @@ function holeFinished(pickedUp = false) {
   const reward = course.daily ? null : progress.recordHole(holeId(game.holeIndex), strokes, par, pickedUp);
   ads.holeFinished();
   game.lastReward = reward;
+  setTimeout(checkAwards, 1200);
   const newlyOpen = lockedBefore.filter(isUnlocked);
   if (newlyOpen.length) setTimeout(() => toast(`NEW COURSE UNLOCKED!<br>${newlyOpen[0].name.toUpperCase()}`, 3200), 1500);
   setTimeout(() => {
@@ -363,7 +366,9 @@ function finishRound() {
     return;
   }
   const total = game.scores.reduce((a, b) => a + b, 0);
-  const { isBest } = progress.recordRound(course.id, total);
+  const par = LEVELS.reduce((a, l) => a + l.par, 0);
+  const { isBest } = progress.recordRound(course.id, total, par);
+  checkAwards();
   endTrial();
   showScorecard(true, isBest);
 }
@@ -388,6 +393,7 @@ function showDailyResult() {
   const level = course.holes[0];
   const strokes = game.scores[0];
   const res = progress.recordDaily(key, strokes, level.par);
+  checkAwards();
   const official = progress.dailyResult(key);
   const streak = progress.streak(key);
   const n = level.daily.number;
@@ -416,16 +422,73 @@ function showDailyResult() {
   if (res.first && streak > 1) toast(`${ICONS.flame} ${streak} DAY STREAK!`);
 }
 
+// Toasts queue up so several unlocks in a row each get their moment.
 let toastTimer = null;
+const toastQueue = [];
 function toast(html, ms = 2200) {
+  if (toastTimer) {
+    toastQueue.push([html, ms]);
+    return;
+  }
+  showToast(html, ms);
+}
+function showToast(html, ms) {
   const el = $('toast');
   el.innerHTML = html;
   el.classList.remove('hidden');
   el.style.animation = 'none';
   void el.offsetWidth;
   el.style.animation = '';
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.add('hidden'), ms);
+  toastTimer = setTimeout(() => {
+    el.classList.add('hidden');
+    toastTimer = null;
+    const next = toastQueue.shift();
+    if (next) setTimeout(() => showToast(...next), 150);
+  }, ms);
+}
+
+// ---------------------------------------------------------------------------
+// Awards
+
+function awardCtx() {
+  return {
+    stars: totalStars(),
+    allStars: COURSES.reduce((a, c) => a + c.holes.length * 3, 0),
+    allCourses: COURSES.length,
+  };
+}
+
+function rewardLabel(a) {
+  const parts = [];
+  if (a.reward) parts.push(progress.item(a.reward.cat, a.reward.id).name + ' ' + CAT_LABEL[a.reward.cat]);
+  if (a.coins) parts.push(`${ICONS.coin}${a.coins}`);
+  return parts.join(' + ');
+}
+
+function checkAwards() {
+  for (const a of progress.checkAwards(awardCtx())) {
+    sfx.fanfare(true);
+    toast(`${ICONS.trophy} AWARD: ${a.name}<br><small>${rewardLabel(a)}</small>`, 3000);
+  }
+}
+
+function renderAwards() {
+  const ctx = awardCtx();
+  const done = AWARDS.filter((a) => progress.hasAward(a.id)).length;
+  $('awards-count').innerHTML = `${ICONS.trophy}${done}/${AWARDS.length}`;
+  $('award-list').innerHTML = AWARDS.map((a) => {
+    const has = progress.hasAward(a.id);
+    const [v, goal] = progress.awardProgress(a, ctx);
+    return `<div class="award${has ? ' done' : ''}">
+      <span class="award-icon">${has ? ICONS.trophy : ICONS.trophyEmpty}</span>
+      <span class="award-body">
+        <span class="award-name">${a.name}</span>
+        <span class="award-desc">${a.desc}</span>
+        <span class="award-bar"><i style="width:${Math.round((v / goal) * 100)}%"></i></span>
+        <span class="award-meta"><span>${has ? 'DONE' : `${v}/${goal}`}</span><span>${rewardLabel(a)}</span></span>
+      </span>
+    </div>`;
+  }).join('');
 }
 
 async function enableReminders() {
@@ -456,6 +519,7 @@ function handleEvents(events) {
         if (e.speed > 2) vibrate(8);
         break;
       case 'bumper':
+        progress.bump('bumpers');
         sfx.bumper();
         vibrate(15);
         game.view.bumperHit(e.x, e.z);
@@ -464,6 +528,7 @@ function handleEvents(events) {
         });
         break;
       case 'spinner':
+        progress.bump('spinners');
         sfx.spinner();
         vibrate(10);
         break;
@@ -471,10 +536,7 @@ function handleEvents(events) {
         sfx.sink();
         vibrate([20, 40, 30]);
         game.sinkAnim = 0.001;
-        const y = heightAt(game.course, game.course.hole.x, game.course.hole.z);
-        burst(game.course.hole.x, y + 0.1, game.course.hole.z, PALETTE.flowers.concat([PALETTE.flag]), 40, {
-          speed: 2.2, up: 4.5, life: 1.6, gravity: 7,
-        });
+        celebrate(progress.equippedItem('fx'));
         game.strokes = Math.min(game.strokes, MAX_STROKES);
         holeFinished();
         break;
@@ -484,12 +546,14 @@ function handleEvents(events) {
         vibrate(8);
         break;
       case 'portal':
+        progress.bump('portals');
         sfx.portal();
         vibrate(15);
         burst(e.x, heightAt(game.course, e.x, e.z) + 0.1, e.z, [game.view.P.portalIn, 0xffffff], 10, { speed: 1, up: 1.5, life: 0.5 });
         burst(e.tx, heightAt(game.course, e.tx, e.tz) + 0.1, e.tz, [game.view.P.portalOut, 0xffffff], 10, { speed: 1, up: 1.5, life: 0.5 });
         break;
       case 'water': {
+        progress.bump('splashes');
         const lava = game.theme.lava;
         if (lava) sfx.sizzle();
         else sfx.splash();
@@ -510,6 +574,41 @@ function handleEvents(events) {
         break;
     }
   }
+}
+
+// Cup celebration: the equipped style from the shop.
+function celebrate(fx) {
+  const { x, z } = game.course.hole;
+  const y = heightAt(game.course, x, z) + 0.1;
+  const c = fx.colors;
+  if (fx.float) burst(x, y, z, c, 30, { speed: 0.7, up: 1.6, life: 1.8, gravity: -0.6 });
+  else if (fx.fountain && !fx.fireworks) burst(x, y, z, c, 45, { speed: 1.1, up: 6, life: 1.8, gravity: 9 });
+  else burst(x, y, z, c, 40, { speed: 2.2, up: 4.5, life: 1.6, gravity: 7 });
+  if (fx.fireworks) {
+    [0.25, 0.55, 0.85].forEach((delay, i) =>
+      setTimeout(() => {
+        const ox = (i - 1) * 0.9;
+        burst(x + ox, y + 1.6 + i * 0.3, z - 0.4, [c[i % c.length], 0xffffff], 28, { speed: 2.6, up: 0.8, life: 0.9, gravity: 2 });
+        sfx.tone(300 + i * 120, 0.15, { type: 'square', vol: 0.06, slide: 400 });
+      }, delay * 1000),
+    );
+    if (fx.fountain) burst(x, y, z, c, 50, { speed: 1.2, up: 6.5, life: 2, gravity: 9 });
+  }
+}
+
+const RAINBOW = [0xff4f5e, 0xff9f1c, 0xffd166, 0x6cc24a, 0x5ec8ff, 0x8f5bff];
+function spawnTrail(b, co) {
+  const trail = progress.equippedItem('trails');
+  let colors = trail.colors;
+  if (trail.id === 'match') {
+    const t = progress.equipped().trail;
+    colors = t ? [t] : [];
+  }
+  if (trail.rainbow) colors = [RAINBOW[Math.floor(game.time * 12) % RAINBOW.length]];
+  if (!colors.length) return;
+  burst(b.x, heightAt(co, b.x, b.z) + BALL_R * 0.6, b.z, colors, 1, {
+    speed: trail.speed ?? 0.15, up: trail.up ?? 0.4, life: trail.life ?? 0.45, gravity: trail.gravity ?? 0,
+  });
 }
 
 function afterStop() {
@@ -825,6 +924,8 @@ function refreshTitle() {
   $('btn-daily').querySelector('.badge')?.remove();
   if (done == null) $('btn-daily').insertAdjacentHTML('beforeend', '<span class="badge">NEW</span>');
   refreshAdButtons();
+  const awardsDone = AWARDS.filter((a) => progress.hasAward(a.id)).length;
+  $('btn-awards').innerHTML = `AWARDS <small>${awardsDone}/${AWARDS.length}</small>`;
   const all = COURSES.reduce((a, c) => a + c.holes.length * 3, 0);
   const open = COURSES.filter(isUnlocked).length;
   $('courses-sub').innerHTML = `${ICONS.star}${totalStars()}/${all} · ${open}/${COURSES.length} OPEN`;
@@ -917,14 +1018,57 @@ function renderShop() {
     }).join('');
     return;
   }
-  const eq = progress.equipped().id;
-  $('shop-grid').innerHTML = SKINS.map((s) => {
-    const owned = progress.owns(s.id);
-    const label = owned ? (s.id === eq ? 'EQUIPPED' : 'TAP TO USE') : `${ICONS.coin}${s.price}`;
-    return `<button class="skin${s.id === eq ? ' equipped' : ''}${owned ? '' : ' locked'}" data-id="${s.id}">
-      <span class="ball" style="background:linear-gradient(${hex(s.a)} 0 38%, ${hex(s.b)} 38% 62%, ${hex(s.a)} 62%)"></span>
-      ${s.name}<br><span class="price">${label}</span></button>`;
+  const cat = shopTab;
+  const eq = progress.equippedItem(cat).id;
+  $('shop-grid').innerHTML = CATALOG[cat].map((it) => {
+    const owned = progress.ownsItem(cat, it.id);
+    const label = owned
+      ? it.id === eq ? 'EQUIPPED' : 'TAP TO USE'
+      : it.award ? `${ICONS.trophy}${awardById(it.award).name}` : `${ICONS.coin}${it.price}`;
+    return `<button class="skin${it.id === eq ? ' equipped' : ''}${owned ? '' : ' locked'}${it.award && !owned ? ' award-item' : ''}" data-cat="${cat}" data-id="${it.id}">
+      ${preview(cat, it, hex)}
+      ${it.name}<br><span class="price">${label}</span></button>`;
   }).join('');
+}
+
+const CAT_LABEL = { balls: 'BALL', trails: 'TRAIL', flags: 'FLAG', fx: 'CELEBRATION' };
+const PATTERN_CSS = {
+  stripes: (a, b) => `repeating-linear-gradient(${a} 0 6px, ${b} 6px 12px)`,
+  checker: (a, b) => `conic-gradient(${a} 25%, ${b} 0 50%, ${a} 0 75%, ${b} 0) 0 0 / 12px 12px`,
+  split: (a, b) => `linear-gradient(${b} 50%, ${a} 50%)`,
+  rainbow: () => 'linear-gradient(90deg, #ff4f5e, #ffd166, #6cc24a, #5ec8ff, #8f5bff)',
+  disco: () => 'conic-gradient(#ff4fd8, #2affd5, #ffd166, #8f5bff, #ff4fd8)',
+};
+const flagThumbs = new Map();
+function preview(cat, it, hex) {
+  if (cat === 'balls') {
+    const a = hex(it.a), b = hex(it.b);
+    const bg = (PATTERN_CSS[it.pattern] ?? ((x, y) => `linear-gradient(${x} 0 38%, ${y} 38% 62%, ${x} 62%)`))(a, b);
+    return `<span class="ball" style="background:${bg}"></span>`;
+  }
+  if (cat === 'flags') {
+    if (!it.grid) return `<span class="flag-thumb" style="background:${hex(PALETTE.flag)}"></span>`;
+    if (!flagThumbs.has(it.id)) {
+      const c = document.createElement('canvas');
+      c.width = 12;
+      c.height = 8;
+      const g = c.getContext('2d');
+      it.grid.forEach((row, y) => [...row].forEach((ch, x) => {
+        g.fillStyle = hex(it.colors[ch]);
+        g.fillRect(x, y, 1, 1);
+      }));
+      flagThumbs.set(it.id, c.toDataURL());
+    }
+    return `<img class="flag-thumb" src="${flagThumbs.get(it.id)}" alt="">`;
+  }
+  // Trails and celebrations: a row of their particle colours.
+  let colors = it.colors ?? [];
+  if (it.rainbow) colors = RAINBOW;
+  if (it.id === 'match') colors = [progress.equipped().trail ?? 0xffffff];
+  const dots = colors.length
+    ? colors.map((c) => `<i style="background:${hex(c)}"></i>`).join('')
+    : '<i class="none"></i>';
+  return `<span class="swatch ${cat}">${dots}</span>`;
 }
 
 $('shop-grid').addEventListener('click', async (e) => {
@@ -960,19 +1104,23 @@ $('shop-grid').addEventListener('click', async (e) => {
     refreshTitle();
     return;
   }
-  const id = btn.dataset.id;
-  const skin = SKINS.find((s) => s.id === id);
-  if (progress.owns(id)) {
-    progress.equip(id);
+  const { cat, id } = btn.dataset;
+  const it = progress.item(cat, id);
+  if (progress.ownsItem(cat, id)) {
+    progress.equipItem(cat, id);
     sfx.click();
-  } else if (progress.buy(id)) {
+  } else if (it.award) {
+    sfx.wall(1);
+    toast(`${ICONS.trophy} EARN IT: ${awardById(it.award).desc}`, 2600);
+  } else if (progress.buyItem(cat, id)) {
     sfx.fanfare(true);
-    toast(`UNLOCKED ${skin.name}!`);
+    toast(`UNLOCKED ${it.name}!`);
   } else {
     sfx.wall(1);
-    toast(`NEED ${skin.price - progress.data.coins} MORE ${ICONS.coin}`);
+    toast(`NEED ${it.price - progress.data.coins} MORE ${ICONS.coin}`);
   }
   setBallSkin(ballMesh, progress.equipped());
+  game.view?.setFlag(progress.equippedItem('flags'));
   renderShop();
   refreshTitle();
 });
@@ -1055,6 +1203,13 @@ for (const tab of document.querySelectorAll('.shop-tab')) {
     renderShop();
   });
 }
+bind('btn-awards', () => {
+  checkAwards();
+  renderAwards();
+  hideScreens();
+  $('screen-awards').classList.remove('hidden');
+});
+bind('btn-awards-close', showTitle);
 bind('btn-shop', () => {
   renderShop();
   hideScreens();
@@ -1157,14 +1312,11 @@ function update(dt) {
         if (!b.moving) break;
       }
       if (!b.moving) game.acc = 0;
-      const skin = progress.equipped();
-      if (skin.trail && b.moving && Math.hypot(b.vx, b.vz) > 0.6) {
+      if (b.moving && Math.hypot(b.vx, b.vz) > 0.6) {
         game.trailT = (game.trailT || 0) - dt;
         if (game.trailT <= 0) {
           game.trailT = 0.035;
-          burst(b.x, heightAt(co, b.x, b.z) + BALL_R * 0.6, b.z, [skin.trail], 1, {
-            speed: 0.15, up: 0.4, life: 0.45, gravity: 0,
-          });
+          spawnTrail(b, co);
         }
       }
       handleEvents(events);
@@ -1264,7 +1416,7 @@ frame();
 
 // Android: hardware back button and app backgrounding.
 native.onBack(() => {
-  if (['screen-shop', 'screen-daily', 'screen-courses'].some((id) => !$(id).classList.contains('hidden'))) {
+  if (['screen-shop', 'screen-daily', 'screen-courses', 'screen-awards'].some((id) => !$(id).classList.contains('hidden'))) {
     showTitle();
   } else if (!$('screen-card').classList.contains('hidden')) {
     $('btn-card-close').click();

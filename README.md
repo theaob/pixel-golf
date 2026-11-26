@@ -32,6 +32,10 @@ Each course has its own theme (`src/themes.js`): palette, lighting, scenery and 
 
 Clubs (Pro Shop → Clubs) change how shots play: a longer aim line, more power, or an aim line that previews the real shot path through 1–3 bounces. The game earns money from ads, mostly opt-in rewarded videos (double coins, mulligan, try a club, save a streak, free coins) plus rare, strictly paced interstitials. See [docs/monetization.md](docs/monetization.md) for the full design and the go-live checklist. Ads use Google's test IDs until you replace them. On the web, add `?ads=mock` to try every ad flow with placeholder ads.
 
+## Unlockables and awards
+
+The Pro Shop sells five kinds of items: **balls** (including patterned ones), **clubs**, **trails**, **flags** (12×8 pixel-art designs) and **party** celebrations for when the ball drops. Most cost coins. Some can only be earned through **awards**: 16 achievements, such as an ace, a 7-day streak, 100 bumper hits or finishing every course. The Awards screen shows progress bars and rewards. Items and awards are defined in `src/unlockables.js` (balls and clubs in `src/progress.js`). `tests/progress.test.js` checks that every award reward exists and that award-only items can't be bought.
+
 ## Keep-coming-back features
 
 - **Daily Hole:** a new procedurally generated hole every day (`src/daily.js`), the same for everyone on that date. Your first finish of the day counts; replays are for fun. `npm test` plays 45 days of generated holes with the bot, and `node tests/daily.test.js 365` checks a full year.
@@ -83,7 +87,8 @@ Create the keystore once with `keytool -genkey -v -keystore release.jks -keyalg 
 | `src/levels.js` | The 18 holes (two nines) as ASCII tile maps (legend at top of file) |
 | `src/native.js` | Android hooks via Capacitor (haptics, back button, app pause, reminders, share, save backup); web fallbacks |
 | `src/daily.js` | Daily hole generator (seeded by date) and connectivity check |
-| `src/progress.js` | Coins, stars, streaks, gift, skins, clubs, settings |
+| `src/progress.js` | Coins, stars, streaks, gift, cosmetics, clubs, awards, settings |
+| `src/unlockables.js` | Trails, flags, celebrations, awards |
 | `src/ads.js` | AdMob wrapper, consent, interstitial pacing rules, web mock |
 | `src/themes.js` | Course themes: palette, lighting, scenery |
 | `src/course.js` | Parses levels and works out heights, slopes and walls (no rendering) |

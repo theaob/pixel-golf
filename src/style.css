@@ -475,7 +475,7 @@ tr.total td {
   margin: 0 auto;
   width: max-content;
   max-width: calc(100% - 32px);
-  top: calc(env(safe-area-inset-top) + 76px);
+  bottom: calc(env(safe-area-inset-bottom) + 196px);
   background: var(--ink);
   color: var(--accent);
   font-size: 11px;
@@ -781,4 +781,141 @@ tr.total td {
 .mock-ad-t {
   font-size: 22px;
   color: var(--accent);
+}
+
+/* ---------- More unlockables, awards ---------- */
+.btn-row {
+  display: flex;
+  gap: 14px;
+}
+.btn-row .btn {
+  flex: 1;
+  font-size: 11px;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+.btn-row .btn small {
+  font-size: 8px;
+  opacity: 0.7;
+}
+.shop-tabs {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.shop-tab {
+  flex: 1 1 28%;
+  font-size: 9px;
+}
+.flag-thumb {
+  display: block;
+  width: 36px;
+  height: 24px;
+  margin: 3px auto 11px;
+  image-rendering: pixelated;
+  box-shadow: 0 0 0 2px var(--ink);
+}
+.swatch {
+  display: flex;
+  justify-content: center;
+  gap: 3px;
+  height: 30px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.swatch i {
+  width: 8px;
+  height: 8px;
+  display: block;
+  box-shadow: 0 0 0 1px var(--ink);
+}
+.swatch.trails i:nth-child(odd) {
+  transform: translateY(-5px);
+}
+.swatch.fx i:nth-child(even) {
+  transform: translateY(-7px);
+}
+.swatch i.none {
+  background: transparent;
+  box-shadow: none;
+  width: 16px;
+  height: 2px;
+  background: var(--ink);
+  opacity: 0.4;
+}
+.skin.award-item .price {
+  color: #8a5a12;
+}
+.skin .price .px-icon.trophy {
+  margin: -4px 4px -2px 0;
+}
+
+#award-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 3px;
+}
+.award {
+  display: flex;
+  gap: 10px;
+  background: #f3e6c4;
+  padding: 8px;
+  box-shadow: 0 0 0 3px var(--ink);
+  color: var(--ink);
+}
+.award.done {
+  background: #ffe8a3;
+}
+.award-icon .px-icon {
+  width: 28px;
+  height: 28px;
+}
+.award-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.award-name {
+  font-size: 10px;
+}
+.award-desc {
+  font-size: 7px;
+  opacity: 0.75;
+  line-height: 1.5;
+}
+.award-bar {
+  height: 8px;
+  background: #d9c9a3;
+  box-shadow: inset 0 0 0 2px var(--ink);
+  position: relative;
+}
+.award-bar i {
+  position: absolute;
+  inset: 2px auto 2px 2px;
+  max-width: calc(100% - 4px);
+  background: #2c9b3f;
+}
+.award.done .award-bar i {
+  background: #e0a83a;
+}
+.award-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 7px;
+  line-height: 1.5;
+}
+.award-meta span:last-child {
+  text-align: right;
+}
+.award-meta .px-icon {
+  width: 8px;
+  height: 8px;
+  margin: -2px 1px -1px 0;
+}
+#toast small {
+  font-size: 9px;
+  color: var(--paper);
 }

@@ -61,7 +61,10 @@
             <span class="daily-label">COURSES</span>
             <span class="daily-sub" id="courses-sub"></span>
           </button>
-          <button id="btn-shop" class="btn ghost">PRO SHOP</button>
+          <div class="btn-row">
+            <button id="btn-shop" class="btn ghost">PRO SHOP</button>
+            <button id="btn-awards" class="btn ghost">AWARDS</button>
+          </div>
         </div>
       </div>
 
@@ -104,6 +107,15 @@
         </div>
       </div>
 
+      <div id="screen-awards" class="screen hidden">
+        <div class="panel wide">
+          <h2>AWARDS</h2>
+          <p class="shop-coins" id="awards-count"></p>
+          <div id="award-list"></div>
+          <button id="btn-awards-close" class="btn">BACK</button>
+        </div>
+      </div>
+
       <div id="screen-shop" class="screen hidden">
         <div class="panel">
           <h2>PRO SHOP</h2>
@@ -111,6 +123,9 @@
           <div class="shop-tabs">
             <button class="shop-tab active" data-tab="balls">BALLS</button>
             <button class="shop-tab" data-tab="clubs">CLUBS</button>
+            <button class="shop-tab" data-tab="trails">TRAILS</button>
+            <button class="shop-tab" data-tab="flags">FLAGS</button>
+            <button class="shop-tab" data-tab="fx">PARTY</button>
           </div>
           <button id="btn-free-coins" class="btn ad hidden"></button>
           <div class="shop-grid" id="shop-grid"></div>

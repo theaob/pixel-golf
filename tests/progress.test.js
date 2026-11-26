@@ -97,3 +97,40 @@ console.log('progress: ok');
   assert.equal(p.streakSavable('2026-12-08'), false); // two missed days (6th, 7th) can't be rescued
 }
 console.log('progress clubs/ads: ok');
+
+// Cosmetics catalogue and awards.
+{
+  const { CATALOG } = await import('../src/progress.js');
+  const { AWARDS } = await import('../src/unlockables.js');
+  // Every award reward exists, and award-only items can't be bought.
+  for (const a of AWARDS) if (a.reward) assert.ok(CATALOG[a.reward.cat].some((x) => x.id === a.reward.id), a.id);
+  for (const [cat, items] of Object.entries(CATALOG)) {
+    for (const it of items) {
+      if (it.award) assert.ok(AWARDS.some((a) => a.id === it.award && a.reward?.id === it.id && a.reward.cat === cat), `${cat}:${it.id}`);
+      else assert.equal(typeof it.price, 'number', `${cat}:${it.id} needs a price`);
+    }
+  }
+  const p = createProgress(mem());
+  const ctx = { stars: 0, allStars: 126, allCourses: 6 };
+  p.addCoins(1000);
+  assert.equal(p.buyItem('flags', 'checkered'), false); // award-only
+  assert.equal(p.buyItem('trails', 'smoke'), true);
+  assert.equal(p.equippedItem('trails').id, 'smoke');
+  assert.equal(p.equipItem('trails', 'match'), true);
+  assert.deepEqual(p.checkAwards(ctx).map((a) => a.id), []);
+  const coins = p.data.coins;
+  p.recordHole('front:0', 1, 2); // first hole + ace
+  const got = p.checkAwards({ ...ctx, stars: 3 }).map((a) => a.id);
+  assert.deepEqual(got.sort(), ['ace', 'first-sink']);
+  assert.ok(p.ownsItem('fx', 'fireworks'));
+  assert.ok(p.data.coins > coins);
+  assert.deepEqual(p.checkAwards({ ...ctx, stars: 3 }), []); // only once
+  for (let i = 0; i < 100; i++) p.bump('bumpers');
+  assert.deepEqual(p.checkAwards(ctx).map((a) => a.id), ['bumpers-100']);
+  assert.ok(p.ownsItem('balls', 'chrome'));
+  assert.deepEqual(p.awardProgress(AWARDS.find((a) => a.id === 'stars-all'), { ...ctx, stars: 40 }), [40, 126]);
+  for (const id of ['front', 'back', 'frost', 'desert', 'volcano', 'space']) p.recordRound(id, 10, 30);
+  assert.ok(p.checkAwards(ctx).some((a) => a.id === 'all-courses'));
+  assert.ok(p.hasAward('under-par-round'));
+}
+console.log('progress cosmetics/awards: ok');

@@ -24,6 +24,18 @@ export const ICONS = {
     'star',
   ),
   play: svg(6, 7, '<path fill="currentColor" d="M0 0h2v7H0zM2 1h2v5H2zM4 2h1v3H4zM5 3h1v1H5z"/>', 'play'),
+  trophy: svg(
+    7,
+    7,
+    '<path fill="#ffd166" d="M1 0h5v1H1zM0 1h7v1H0zM0 2h1v1H0zM6 2h1v1H6zM1 2h5v2H1zM2 4h3v1H2zM3 5h1v1H3zM2 6h3v1H2z"/><path fill="#e0a83a" d="M4 1h1v3H4zM2 6h3v1H2z"/>',
+    'trophy',
+  ),
+  trophyEmpty: svg(
+    7,
+    7,
+    '<path fill="#b8a888" d="M1 0h5v1H1zM0 1h7v1H0zM0 2h1v1H0zM6 2h1v1H6zM1 2h5v2H1zM2 4h3v1H2zM3 5h1v1H3zM2 6h3v1H2z"/>',
+    'trophy empty',
+  ),
   lock: svg(
     7,
     8,

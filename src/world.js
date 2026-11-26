@@ -621,6 +621,13 @@ export class CourseView {
     this.group.add(mesh);
   }
 
+  setFlag(design) {
+    if (!this.cloth) return;
+    this.cloth.material = design.grid
+      ? new THREE.MeshToonMaterial({ map: flagTexture(design), gradientMap: getGradientMap(), side: THREE.DoubleSide })
+      : toon(this.P.flag, { side: THREE.DoubleSide });
+  }
+
   bumperHit(x, z) {
     for (const m of this.bumperMeshes) if (m.b.x === x && m.b.z === z) m.pulse = 1;
   }
@@ -681,18 +688,65 @@ export function createBallMesh(skin = { a: PALETTE.ball, b: 0xd6dcff }) {
   return mesh;
 }
 
+const DISCO = [0xff4fd8, 0x2affd5, 0xffd166, 0x8f5bff, 0xffffff, 0x5ec8ff];
 export function setBallSkin(mesh, skin) {
   const geo = mesh.geometry;
   const pos = geo.attributes.position;
   const col = geo.attributes.color;
   const c1 = new THREE.Color(skin.a);
   const c2 = new THREE.Color(skin.b);
-  for (let i = 0; i < pos.count; i += 3) {
+  const tmp = new THREE.Color();
+  for (let i = 0, f = 0; i < pos.count; i += 3, f++) {
+    const cx = (pos.getX(i) + pos.getX(i + 1) + pos.getX(i + 2)) / 3;
     const cy = (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3;
-    const c = Math.abs(cy) < BALL_R * 0.3 ? c2 : c1;
+    const cz = (pos.getZ(i) + pos.getZ(i + 1) + pos.getZ(i + 2)) / 3;
+    let c;
+    switch (skin.pattern) {
+      case 'stripes':
+        c = Math.floor((cy / BALL_R + 1) * 2.5) % 2 ? c2 : c1;
+        break;
+      case 'checker':
+        c = (Math.floor(Math.atan2(cz, cx) / (Math.PI / 4) + 8) + (cy > 0 ? 1 : 0)) % 2 ? c2 : c1;
+        break;
+      case 'split':
+        c = cy > 0 ? c2 : c1;
+        break;
+      case 'rainbow':
+        if (Math.abs(cy) > BALL_R * 0.75) c = c1;
+        else c = tmp.setHSL(((Math.atan2(cz, cx) / (Math.PI * 2) + 1) % 1), 0.85, 0.6);
+        break;
+      case 'disco':
+        c = tmp.set(DISCO[(f * 7) % DISCO.length]);
+        break;
+      default:
+        c = Math.abs(cy) < BALL_R * 0.3 ? c2 : c1;
+    }
     for (let k = 0; k < 3; k++) col.setXYZ(i + k, c.r, c.g, c.b);
   }
   col.needsUpdate = true;
+}
+
+// Pixel-art flag texture (12x8) from an unlockables.js design.
+const flagCache = new Map();
+export function flagTexture(design) {
+  if (flagCache.has(design.id)) return flagCache.get(design.id);
+  const canvas = document.createElement('canvas');
+  canvas.width = 12;
+  canvas.height = 8;
+  const ctx = canvas.getContext('2d');
+  design.grid.forEach((row, y) =>
+    [...row].forEach((ch, x) => {
+      ctx.fillStyle = `#${design.colors[ch].toString(16).padStart(6, '0')}`;
+      ctx.fillRect(x, y, 1, 1);
+    }),
+  );
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  flagCache.set(design.id, tex);
+  return tex;
 }
 
 // A putter: grip at the top, head resting just behind the ball. The `swing`

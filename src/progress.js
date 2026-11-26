@@ -1,6 +1,7 @@
 // Player progress: coins, stars, daily streak, daily gift, skins, settings.
 // Pure logic over a key/value storage so it can be unit tested in Node.
 import { addDays } from './daily.js';
+import { TRAILS, FLAGS, CELEBRATIONS, AWARDS } from './unlockables.js';
 
 export const SAVE_KEY = 'pg-save-v1';
 
@@ -13,7 +14,20 @@ export const SKINS = [
   { id: 'ocean', name: 'OCEAN', price: 150, a: 0x5ec8ff, b: 0x2a5fd6, trail: 0x9fe3ff },
   { id: 'galaxy', name: 'GALAXY', price: 250, a: 0x8f5bff, b: 0x1a1426, trail: 0xc9b6ff },
   { id: 'gold', name: 'GOLD', price: 500, a: 0xffe066, b: 0xc9932b, trail: 0xfff3b0 },
+  // Patterned balls. `pattern`: band (default), stripes, checker, split, rainbow, disco.
+  { id: 'candy', name: 'CANDY', price: 140, a: 0xffffff, b: 0xff4f5e, trail: 0xff8fa8, pattern: 'stripes' },
+  { id: 'soccer', name: 'SOCCER', price: 180, a: 0xffffff, b: 0x1a1426, trail: 0xffffff, pattern: 'checker' },
+  { id: 'melon', name: 'MELON', price: 180, a: 0x4f9f3a, b: 0x9fd86a, trail: 0xff4f5e, pattern: 'stripes' },
+  { id: 'beach', name: 'BEACH', price: 280, a: 0xffffff, b: 0xff4f5e, trail: 0x5ec8ff, pattern: 'rainbow' },
+  { id: 'eclipse', name: 'ECLIPSE', price: 350, a: 0x1a1426, b: 0xffd166, trail: 0xffd166, pattern: 'split' },
+  { id: 'veteran', name: 'VETERAN', award: 'holes-100', a: 0x3a5a2a, b: 0xd9b46a, trail: 0xd9b46a, pattern: 'stripes' },
+  { id: 'chrome', name: 'CHROME', award: 'bumpers-100', a: 0xe6eaf2, b: 0x8a93a6, trail: 0xffffff, pattern: 'checker' },
+  { id: 'disco', name: 'DISCO', award: 'aces-10', a: 0xff4fd8, b: 0x2affd5, trail: 0xffd166, pattern: 'disco' },
 ];
+
+// Every cosmetic category the shop sells. Balls live in data.skins for
+// backwards compatibility with older saves.
+export const CATALOG = { balls: SKINS, trails: TRAILS, flags: FLAGS, fx: CELEBRATIONS };
 
 // Clubs change how shots play. `power` scales max shot speed, `guide` the
 // aim line length, `preview` how many bounces the aim line simulates.
@@ -47,7 +61,16 @@ function fresh() {
     gift: { lastKey: null, streak: 0 },
     skins: { owned: ['classic'], equipped: 'classic' },
     clubs: { owned: ['classic'], equipped: 'classic' },
-    stats: { holes: 0, rounds: 0 },
+    stats: {
+      holes: 0, rounds: 0, aces: 0, underPar: 0, roundsUnderPar: 0, dailies: 0,
+      bumpers: 0, spinners: 0, splashes: 0, portals: 0, coursesDone: [],
+    },
+    cosmetics: {
+      trails: { owned: ['match', 'none'], equipped: 'match' },
+      flags: { owned: ['classic'], equipped: 'classic' },
+      fx: { owned: ['confetti'], equipped: 'confetti' },
+    },
+    awards: [],
     adsDay: { key: null, freeCoins: 0 },
     streakSaved: null, // date key of the last missed day an ad rescued
     adsRemoved: false,
@@ -62,7 +85,12 @@ export function createProgress(storage) {
     if (raw) {
       const base = fresh();
       const saved = JSON.parse(raw);
-      data = { ...base, ...saved, stats: { ...base.stats, ...saved.stats } };
+      data = {
+        ...base,
+        ...saved,
+        stats: { ...base.stats, ...saved.stats },
+        cosmetics: { ...base.cosmetics, ...saved.cosmetics },
+      };
     }
     else {
       // Migrate best rounds saved by earlier versions.
@@ -117,6 +145,8 @@ export function createProgress(storage) {
       coins += bonus;
       data.coins += coins;
       data.stats.holes += 1;
+      if (!pickedUp && strokes === 1) data.stats.aces += 1;
+      if (!pickedUp && strokes < par) data.stats.underPar += 1;
       persist();
       return { stars, prevStars, coins };
     },
@@ -124,8 +154,14 @@ export function createProgress(storage) {
       data.coins += n;
       persist();
     },
-    recordRound(courseId, total) {
+    // In-memory counter; saved with the next persisted change.
+    bump(stat, n = 1) {
+      data.stats[stat] = (data.stats[stat] || 0) + n;
+    },
+    recordRound(courseId, total, par = Infinity) {
       data.stats.rounds += 1;
+      if (total < par) data.stats.roundsUnderPar += 1;
+      if (!data.stats.coursesDone.includes(courseId)) data.stats.coursesDone.push(courseId);
       const prev = data.rounds[courseId] ?? null;
       const isBest = prev == null || total < prev;
       if (isBest) data.rounds[courseId] = total;
@@ -148,6 +184,7 @@ export function createProgress(storage) {
       if (data.daily.results[key] != null) return { first: false, coins: 0, streak: api.streak(key) };
       const streak = data.daily.lastKey === addDays(key, -1) ? data.daily.streak + 1 : 1;
       data.daily.results[key] = strokes;
+      data.stats.dailies += 1;
       data.daily.lastKey = key;
       data.daily.streak = streak;
       data.daily.best = Math.max(data.daily.best, streak);
@@ -228,25 +265,80 @@ export function createProgress(storage) {
 
     // ---- skins
     owns(id) {
-      return data.skins.owned.includes(id);
+      return api.ownsItem('balls', id);
     },
     equipped() {
       return SKINS.find((s) => s.id === data.skins.equipped) ?? SKINS[0];
     },
     buy(id) {
-      const skin = SKINS.find((s) => s.id === id);
-      if (!skin || api.owns(id) || data.coins < skin.price) return false;
-      data.coins -= skin.price;
-      data.skins.owned.push(id);
-      data.skins.equipped = id;
+      return api.buyItem('balls', id);
+    },
+    equip(id) {
+      return api.equipItem('balls', id);
+    },
+
+    // ---- generic cosmetics (balls, trails, flags, fx)
+    slot(cat) {
+      return cat === 'balls' ? data.skins : data.cosmetics[cat];
+    },
+    item(cat, id) {
+      return CATALOG[cat].find((x) => x.id === id);
+    },
+    ownsItem(cat, id) {
+      return api.slot(cat).owned.includes(id);
+    },
+    equippedItem(cat) {
+      return api.item(cat, api.slot(cat).equipped) ?? CATALOG[cat][0];
+    },
+    buyItem(cat, id) {
+      const it = api.item(cat, id);
+      if (!it || it.award || api.ownsItem(cat, id) || data.coins < it.price) return false;
+      data.coins -= it.price;
+      api.slot(cat).owned.push(id);
+      api.slot(cat).equipped = id;
       persist();
       return true;
     },
-    equip(id) {
-      if (!api.owns(id)) return false;
-      data.skins.equipped = id;
+    equipItem(cat, id) {
+      if (!api.ownsItem(cat, id)) return false;
+      api.slot(cat).equipped = id;
       persist();
       return true;
+    },
+    grantItem(cat, id) {
+      if (!api.item(cat, id) || api.ownsItem(cat, id)) return false;
+      api.slot(cat).owned.push(id);
+      persist();
+      return true;
+    },
+
+    // ---- awards. ctx: { stars, allStars, allCourses }
+    awardProgress(award, ctx) {
+      const value =
+        award.stat === 'stars' ? ctx.stars
+        : award.stat === 'bestStreak' ? data.daily.best
+        : award.stat === 'coursesDone' ? data.stats.coursesDone.length
+        : data.stats[award.stat] || 0;
+      const goal = typeof award.goal === 'number' ? award.goal : ctx[award.goal];
+      return [Math.min(value, goal), goal];
+    },
+    hasAward(id) {
+      return data.awards.includes(id);
+    },
+    // Grants every newly completed award and returns them.
+    checkAwards(ctx) {
+      const earned = [];
+      for (const a of AWARDS) {
+        if (api.hasAward(a.id)) continue;
+        const [v, goal] = api.awardProgress(a, ctx);
+        if (v < goal) continue;
+        data.awards.push(a.id);
+        if (a.reward && !api.ownsItem(a.reward.cat, a.reward.id)) api.slot(a.reward.cat).owned.push(a.reward.id);
+        if (a.coins) data.coins += a.coins;
+        earned.push(a);
+      }
+      if (earned.length) persist();
+      return earned;
     },
 
     // ---- settings
