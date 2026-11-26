@@ -52,10 +52,10 @@
             <span class="daily-label">DAILY HOLE</span>
             <span class="daily-sub" id="daily-sub"></span>
           </button>
-          <button id="btn-play-0" class="btn">FRONT NINE <span class="course-stars" id="stars-0"></span></button>
-          <p class="course-best" id="best-0"></p>
-          <button id="btn-play-1" class="btn">BACK NINE <span class="course-stars" id="stars-1"></span></button>
-          <p class="course-best" id="best-1"></p>
+          <button id="btn-courses" class="btn big">
+            <span class="daily-label">COURSES</span>
+            <span class="daily-sub" id="courses-sub"></span>
+          </button>
           <button id="btn-shop" class="btn ghost">BALL SHOP</button>
         </div>
       </div>
@@ -85,6 +85,15 @@
           <button id="btn-share" class="btn">SHARE RESULT</button>
           <button id="btn-remind" class="btn ghost hidden">REMIND ME TOMORROW</button>
           <button id="btn-daily-done" class="btn ghost">DONE</button>
+        </div>
+      </div>
+
+      <div id="screen-courses" class="screen hidden">
+        <div class="panel wide">
+          <h2>COURSES</h2>
+          <p class="shop-coins" id="courses-stars"></p>
+          <div id="course-list"></div>
+          <button id="btn-courses-close" class="btn">BACK</button>
         </div>
       </div>
 

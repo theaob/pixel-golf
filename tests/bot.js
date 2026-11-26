@@ -18,6 +18,16 @@ function distanceField(course) {
       [c + 1, r, `v${c + 1},${r}`], [c - 1, r, `v${c},${r}`],
       [c, r + 1, `h${c},${r + 1}`], [c, r - 1, `h${c},${r}`],
     ];
+    // Searching backwards from the cup: a portal exit makes its entrance reachable.
+    for (const p of course.portals) {
+      if (Math.floor(p.to.x) === c && Math.floor(p.to.z) === r) {
+        const ek = key(Math.floor(p.from.x), Math.floor(p.from.z));
+        if (!dist.has(ek)) {
+          dist.set(ek, d);
+          q.push([Math.floor(p.from.x), Math.floor(p.from.z)]);
+        }
+      }
+    }
     for (const [nc, nr, wk] of nbs) {
       const t = tileAt(course, nc + 0.5, nr + 0.5);
       if (!t || t.type === T.VOID || t.type === T.WATER || blocked.has(wk)) continue;
@@ -54,7 +64,9 @@ function simulate(course, ball, dir, power, t0) {
   return { ball: b, result, t, escaped };
 }
 
-export function solve(course, maxStrokes = 10, angles = 144) {
+// `noise` (optional): { aim: radians, power: fraction, rand } makes each chosen
+// shot wobble like a human's, to estimate how hard a hole really is.
+export function solve(course, maxStrokes = 10, angles = 144, noise = null) {
   const df = distanceField(course);
   let ball = createBall(course.tee.x, course.tee.z);
   let t = 0;
@@ -68,12 +80,20 @@ export function solve(course, maxStrokes = 10, angles = 144) {
         const r = simulate(course, ball, (a / angles) * Math.PI * 2, p, t);
         if (r.escaped) escaped = true;
         const score = r.result === 'sink' ? -1000 : r.result === 'water' ? 1e6 : df(r.ball.x, r.ball.z);
-        if (!best || score < best.score) best = { score, r };
+        if (!best || score < best.score) best = { score, r, dir: (a / angles) * Math.PI * 2, power: p };
       }
     }
-    ball = best.r.ball;
-    t = best.r.t;
-    if (best.r.result === 'sink') return { sunk: true, strokes, escaped };
+    let r = best.r;
+    if (noise) {
+      const g = () => (noise.rand() + noise.rand() + noise.rand() - 1.5) / 1.5; // ~[-1, 1]
+      const dir = best.dir + g() * noise.aim;
+      const pow = Math.min(1, Math.max(0.05, best.power * (1 + g() * noise.power)));
+      r = simulate(course, ball, dir, pow, t);
+      if (r.result === 'water') strokes++; // penalty stroke
+    }
+    ball = r.ball;
+    t = r.t;
+    if (r.result === 'sink') return { sunk: true, strokes, escaped };
   }
   return { sunk: false, strokes, escaped };
 }

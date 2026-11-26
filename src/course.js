@@ -1,7 +1,7 @@
 // Pure course model: parsing, surface heights and collision geometry.
 // No rendering code here so the physics can be tested headlessly in Node.
 
-export const T = { VOID: 0, GRASS: 1, SAND: 2, WATER: 3, SLOPE: 4 };
+export const T = { VOID: 0, GRASS: 1, SAND: 2, WATER: 3, SLOPE: 4, ICE: 5, BOOST: 6 };
 
 export const LEVEL_H = 0.45; // world height of one elevation level
 export const WALL_H = 0.22; // wall height above the playing surface
@@ -11,8 +11,11 @@ export const HOLE_R = 0.19;
 export const BUMPER_R = 0.2;
 export const SPINNER_LEN = 1.1; // half length
 export const SPINNER_T = 0.07; // half thickness
+export const PORTAL_R = 0.3; // trigger radius of a portal entrance
 
 const SLOPE_DIRS = { '>': [1, 0], '<': [-1, 0], v: [0, 1], '^': [0, -1] };
+// Boost pads push the ball along the arrow.
+const BOOST_DIRS = { '→': [1, 0], '←': [-1, 0], '↓': [0, 1], '↑': [0, -1] };
 
 export function parseLevel(level) {
   const rows = level.map;
@@ -30,7 +33,10 @@ export function parseLevel(level) {
     bumpers: [],
     spinners: [],
     walls: [],
+    portals: [], // { from: {x,z}, to: {x,z} }
   };
+  let portalIn = null;
+  let portalOut = null;
 
   for (let r = 0; r < h; r++) {
     for (let c = 0; c < w; c++) {
@@ -59,6 +65,19 @@ export function parseLevel(level) {
         case '~':
           tile.type = T.WATER;
           break;
+        case 'i':
+          tile.type = T.ICE;
+          break;
+        case '@':
+          tile.type = T.GRASS;
+          tile.portal = 'in';
+          portalIn = { x: cx, z: cz };
+          break;
+        case '&':
+          tile.type = T.GRASS;
+          tile.portal = 'out';
+          portalOut = { x: cx, z: cz };
+          break;
         case 'o':
           tile.type = T.GRASS;
           course.bumpers.push({ x: cx, z: cz, r: BUMPER_R });
@@ -77,12 +96,17 @@ export function parseLevel(level) {
           if (SLOPE_DIRS[ch]) {
             tile.type = T.SLOPE;
             tile.dir = SLOPE_DIRS[ch];
+          } else if (BOOST_DIRS[ch]) {
+            tile.type = T.BOOST;
+            tile.dir = BOOST_DIRS[ch];
           }
       }
       tiles.push(tile);
     }
   }
   if (!course.tee || !course.hole) throw new Error(`Level "${level.name}" needs S and O`);
+  if (!!portalIn !== !!portalOut) throw new Error(`Level "${level.name}": portals need both @ and &`);
+  if (portalIn) course.portals.push({ from: portalIn, to: portalOut });
   buildWalls(course);
   return course;
 }

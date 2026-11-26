@@ -12,7 +12,9 @@ import {
   localHeight,
   isPlayable,
   spinnerAngle,
+  PORTAL_R,
 } from './course.js';
+import { THEMES } from './themes.js';
 
 export const BASE_Y = -0.6; // ground level around the course
 const WATER_DROP = 0.14;
@@ -24,6 +26,13 @@ export const PALETTE = {
   slopeA: 0x7fd05a,
   slopeB: 0x70c24c,
   chevron: 0xa8e67a,
+  iceA: 0xd4f1ff,
+  iceB: 0xc2e8fa,
+  iceStreak: 0xffffff,
+  boost: 0x3b2f5c,
+  boostArrow: 0xffd166,
+  portalIn: 0xff4fd8,
+  portalOut: 0x2affd5,
   sand: 0xf0d58c,
   sandDark: 0xe2c072,
   water: 0x3ba7e0,
@@ -148,8 +157,10 @@ const UP = [0, 1, 0];
 // ---------------------------------------------------------------------------
 
 export class CourseView {
-  constructor(course) {
+  constructor(course, theme = THEMES.meadow) {
     this.course = course;
+    this.theme = theme;
+    this.P = { ...PALETTE, ...theme.palette };
     this.group = new THREE.Group();
     this.spinnerMeshes = [];
     this.bumperMeshes = [];
@@ -160,6 +171,7 @@ export class CourseView {
     this.buildWater();
     this.buildCup();
     this.buildObstacles();
+    this.buildSpecials();
     this.buildScenery();
   }
 
@@ -187,9 +199,11 @@ export class CourseView {
       // --- top surface
       if (tile.type !== T.WATER) {
         let color;
-        if (tile.type === T.SAND) color = tile.checker ? PALETTE.sand : PALETTE.sandDark;
-        else if (tile.type === T.SLOPE) color = tile.checker ? PALETTE.slopeA : PALETTE.slopeB;
-        else color = tile.checker ? PALETTE.grassA : PALETTE.grassB;
+        if (tile.type === T.SAND) color = tile.checker ? this.P.sand : this.P.sandDark;
+        else if (tile.type === T.ICE) color = tile.checker ? this.P.iceA : this.P.iceB;
+        else if (tile.type === T.BOOST) color = this.P.boost;
+        else if (tile.type === T.SLOPE) color = tile.checker ? this.P.slopeA : this.P.slopeB;
+        else color = tile.checker ? this.P.grassA : this.P.grassB;
 
         if (tile.cup) {
           this.cupTop(g, tile, color);
@@ -200,7 +214,7 @@ export class CourseView {
           for (let i = 0; i < n; i++)
             for (let j = 0; j < n; j++) {
               const x0 = i / n, x1 = (i + 1) / n, z0 = j / n, z1 = (j + 1) / n;
-              const col = rand() < 0.5 ? PALETTE.sand : PALETTE.sandDark;
+              const col = rand() < 0.5 ? this.P.sand : this.P.sandDark;
               g.quad(P(x0, z0), P(x1, z0), P(x1, z1), P(x0, z1), col, UP);
             }
         } else {
@@ -208,6 +222,16 @@ export class CourseView {
         }
 
         if (tile.type === T.SLOPE) this.chevron(g, tile);
+        if (tile.type === T.ICE) {
+          // A couple of glints so ice reads as ice.
+          const rand = rng(c * 92821 + r * 68917);
+          const lift = localHeight(tile, 0.5, 0.5) + 0.004;
+          for (let k = 0; k < 2; k++) {
+            const x0 = 0.15 + rand() * 0.5, z0 = 0.15 + rand() * 0.6, len = 0.15 + rand() * 0.15;
+            g.quad([c + x0, lift, r + z0], [c + x0 + len, lift, r + z0 - len * 0.6],
+              [c + x0 + len + 0.04, lift, r + z0 - len * 0.6], [c + x0 + 0.04, lift, r + z0], this.P.iceStreak, UP);
+          }
+        }
       }
 
       // --- side faces down to whatever is next door
@@ -228,7 +252,7 @@ export class CourseView {
         const B = [c + s.b[0], tb, r + s.b[1]];
         const Bb = [c + s.b[0], Math.min(bb, tb), r + s.b[1]];
         const Ab = [c + s.a[0], Math.min(ba, ta), r + s.a[1]];
-        const col = tile.type === T.WATER ? PALETTE.waterDeep : PALETTE.dirt;
+        const col = tile.type === T.WATER ? this.P.waterDeep : this.P.dirt;
         g.quad(A, B, Bb, Ab, col, s.out);
       }
     }
@@ -239,7 +263,7 @@ export class CourseView {
     const step = 2;
     for (let x = x0; x < x1; x += step)
       for (let z = z0; z < z1; z += step) {
-        const col = ((x + z) / step) % 2 === 0 ? PALETTE.ground : PALETTE.groundB;
+        const col = ((x + z) / step) % 2 === 0 ? this.P.ground : this.P.groundB;
         g.quad([x, BASE_Y, z], [x + step, BASE_Y, z], [x + step, BASE_Y, z + step], [x, BASE_Y, z + step], col, UP);
       }
 
@@ -263,7 +287,7 @@ export class CourseView {
     const w = 0.07;
     // Two arms of a V, tip at u = +0.18
     for (const side of [-1, 1]) {
-      g.quad(pt(0.18, 0), pt(0.18 - w * 1.4, 0), pt(-0.12 - w, 0.28 * side), pt(-0.12, 0.28 * side), PALETTE.chevron, UP);
+      g.quad(pt(0.18, 0), pt(0.18 - w * 1.4, 0), pt(-0.12 - w, 0.28 * side), pt(-0.12, 0.28 * side), this.P.chevron, UP);
     }
   }
 
@@ -301,11 +325,11 @@ export class CourseView {
       const b2 = [bx - nx * h, tb, bz - nz * h];
       const a1b = [a1[0], yb, a1[2]], a2b = [a2[0], yb, a2[2]];
       const b1b = [b1[0], yb, b1[2]], b2b = [b2[0], yb, b2[2]];
-      g.quad(a1, b1, b2, a2, PALETTE.wallTop, UP);
-      g.quad(a1, b1, b1b, a1b, PALETTE.wallSide, [nx, 0, nz]);
-      g.quad(a2, b2, b2b, a2b, PALETTE.wallSide, [-nx, 0, -nz]);
-      g.quad(a1, a2, a2b, a1b, PALETTE.wallSide, [-dx, 0, -dz]);
-      g.quad(b1, b2, b2b, b1b, PALETTE.wallSide, [dx, 0, dz]);
+      g.quad(a1, b1, b2, a2, this.P.wallTop, UP);
+      g.quad(a1, b1, b1b, a1b, this.P.wallSide, [nx, 0, nz]);
+      g.quad(a2, b2, b2b, a2b, this.P.wallSide, [-nx, 0, -nz]);
+      g.quad(a1, a2, a2b, a1b, this.P.wallSide, [-dx, 0, -dz]);
+      g.quad(b1, b2, b2b, b1b, this.P.wallSide, [dx, 0, dz]);
     }
     const mesh = new THREE.Mesh(g.build(), vertexToon());
     mesh.castShadow = true;
@@ -339,7 +363,10 @@ export class CourseView {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     geo.computeVertexNormals();
-    const mesh = new THREE.Mesh(geo, toon(PALETTE.water));
+    const mesh = new THREE.Mesh(
+      geo,
+      toon(this.P.water, this.P.waterGlow ? { emissive: this.P.waterGlow, emissiveIntensity: 0.6 } : {}),
+    );
     mesh.receiveShadow = true;
     this.group.add(mesh);
     this.water = { geo, base: new Float32Array(base) };
@@ -351,24 +378,24 @@ export class CourseView {
     this.cupY = y;
     const cup = new THREE.Mesh(
       new THREE.CylinderGeometry(HOLE_R, HOLE_R, CUP_DEPTH, 16, 1, true),
-      toon(PALETTE.cup, { side: THREE.BackSide }),
+      toon(this.P.cup, { side: THREE.BackSide }),
     );
     cup.position.set(x, y - CUP_DEPTH / 2, z);
     this.group.add(cup);
-    const bottom = new THREE.Mesh(new THREE.CircleGeometry(HOLE_R, 16), toon(PALETTE.cup));
+    const bottom = new THREE.Mesh(new THREE.CircleGeometry(HOLE_R, 16), toon(this.P.cup));
     bottom.rotation.x = -Math.PI / 2;
     bottom.position.set(x, y - CUP_DEPTH + 0.01, z);
     this.group.add(bottom);
 
     // Flag
     const flag = new THREE.Group();
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 1.3, 5), toon(PALETTE.pole));
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 1.3, 5), toon(this.P.pole));
     pole.position.y = 0.65 - CUP_DEPTH;
     pole.castShadow = true;
     flag.add(pole);
     const clothGeo = new THREE.PlaneGeometry(0.5, 0.3, 4, 1);
     clothGeo.translate(0.25, 0, 0);
-    const cloth = new THREE.Mesh(clothGeo, toon(PALETTE.flag, { side: THREE.DoubleSide }));
+    const cloth = new THREE.Mesh(clothGeo, toon(this.P.flag, { side: THREE.DoubleSide }));
     cloth.position.y = 1.3 - CUP_DEPTH - 0.15;
     cloth.castShadow = true;
     flag.add(cloth);
@@ -384,11 +411,11 @@ export class CourseView {
     for (const b of co.bumpers) {
       const y = localHeight(this.tile(Math.floor(b.x), Math.floor(b.z)), 0.5, 0.5);
       const grp = new THREE.Group();
-      const body = new THREE.Mesh(new THREE.CylinderGeometry(b.r, b.r * 1.05, 0.26, 10), toon(PALETTE.bumper));
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(b.r, b.r * 1.05, 0.26, 10), toon(this.P.bumper));
       body.position.y = 0.13;
       body.castShadow = true;
       grp.add(body);
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(b.r * 0.6, b.r * 0.75, 0.08, 10), toon(PALETTE.bumperTop));
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(b.r * 0.6, b.r * 0.75, 0.08, 10), toon(this.P.bumperTop));
       cap.position.y = 0.3;
       cap.castShadow = true;
       grp.add(cap);
@@ -399,13 +426,13 @@ export class CourseView {
     for (const sp of co.spinners) {
       const y = localHeight(this.tile(Math.floor(sp.x), Math.floor(sp.z)), 0.5, 0.5);
       const grp = new THREE.Group();
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.42, 8), toon(PALETTE.post));
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.42, 8), toon(this.P.post));
       post.position.y = 0.21;
       post.castShadow = true;
       grp.add(post);
       const bar = new THREE.Mesh(
         new THREE.BoxGeometry(sp.len * 2, 0.16, SPINNER_T * 2),
-        toon(PALETTE.spinner),
+        toon(this.P.spinner),
       );
       bar.position.y = 0.16;
       bar.castShadow = true;
@@ -413,6 +440,64 @@ export class CourseView {
       grp.position.set(sp.x, y, sp.z);
       this.group.add(grp);
       this.spinnerMeshes.push({ grp, sp });
+    }
+  }
+
+  // Boost pad arrows and portals.
+  buildSpecials() {
+    const co = this.course;
+    const g = new GeoBuilder();
+    let anyBoost = false;
+    for (const tile of co.tiles) {
+      if (tile.type !== T.BOOST) continue;
+      anyBoost = true;
+      const [dx, dz] = tile.dir;
+      const px = -dz, pz = dx;
+      const y = localHeight(tile, 0.5, 0.5) + 0.008;
+      const pt = (u, v) => [tile.c + 0.5 + dx * u + px * v, y, tile.r + 0.5 + dz * u + pz * v];
+      for (const off of [-0.18, 0.14]) {
+        for (const side of [-1, 1]) {
+          g.quad(pt(off + 0.16, 0), pt(off + 0.04, 0), pt(off - 0.1, 0.26 * side), pt(off + 0.02, 0.26 * side), 0xffffff, UP);
+        }
+      }
+    }
+    if (anyBoost) {
+      this.boostMat = new THREE.MeshToonMaterial({
+        color: this.P.boostArrow,
+        emissive: this.P.boostArrow,
+        emissiveIntensity: 0.3,
+        gradientMap: toon(0xffffff).gradientMap,
+      });
+      this.group.add(new THREE.Mesh(g.build(), this.boostMat));
+    }
+    this.portalMeshes = [];
+    for (const p of co.portals) {
+      for (const [pos, color] of [[p.from, this.P.portalIn], [p.to, this.P.portalOut]]) {
+        const t = this.tile(Math.floor(pos.x), Math.floor(pos.z));
+        const y = localHeight(t, 0.5, 0.5);
+        const grp = new THREE.Group();
+        const ringGeo = new THREE.RingGeometry(PORTAL_R * 0.75, PORTAL_R * 1.15, 12);
+        ringGeo.rotateX(-Math.PI / 2);
+        const mat = new THREE.MeshToonMaterial({ color, emissive: color, emissiveIntensity: 0.5, gradientMap: toon(0xffffff).gradientMap });
+        const ring = new THREE.Mesh(ringGeo, mat);
+        ring.position.y = 0.01;
+        grp.add(ring);
+        const coreGeo = new THREE.CircleGeometry(PORTAL_R * 0.75, 12);
+        coreGeo.rotateX(-Math.PI / 2);
+        const core = new THREE.Mesh(coreGeo, toon(0x120c26));
+        core.position.y = 0.006;
+        grp.add(core);
+        // Little orbiting sparks.
+        const sparkGeo = new THREE.BoxGeometry(0.05, 0.05, 0.05);
+        for (let k = 0; k < 3; k++) {
+          const sp = new THREE.Mesh(sparkGeo, mat);
+          sp.userData.phase = (k / 3) * Math.PI * 2;
+          grp.add(sp);
+        }
+        grp.position.set(pos.x, y, pos.z);
+        this.group.add(grp);
+        this.portalMeshes.push(grp);
+      }
     }
   }
 
@@ -424,48 +509,112 @@ export class CourseView {
         for (let dc = -m; dc <= m; dc++) if (isPlayable(this.tile(c + dc, r + dr))) return true;
       return false;
     };
-    const trunkGeo = new THREE.CylinderGeometry(0.07, 0.09, 0.4, 5);
-    const leafGeo = new THREE.ConeGeometry(0.42, 0.75, 6);
-    const leafGeo2 = new THREE.ConeGeometry(0.32, 0.6, 6);
-    const rockGeo = new THREE.DodecahedronGeometry(0.22, 0);
-    const flowerGeo = new THREE.BoxGeometry(0.07, 0.07, 0.07);
+    const P = this.P;
+    const geos = {
+      trunk: new THREE.CylinderGeometry(0.07, 0.09, 0.4, 5),
+      leaf: new THREE.ConeGeometry(0.42, 0.75, 6),
+      leaf2: new THREE.ConeGeometry(0.32, 0.6, 6),
+      cap: new THREE.ConeGeometry(0.2, 0.3, 6),
+      rock: new THREE.DodecahedronGeometry(0.22, 0),
+      flower: new THREE.BoxGeometry(0.07, 0.07, 0.07),
+      cactus: new THREE.CylinderGeometry(0.11, 0.12, 0.8, 6),
+      arm: new THREE.CylinderGeometry(0.07, 0.07, 0.3, 6),
+      branch: new THREE.CylinderGeometry(0.03, 0.045, 0.45, 4),
+      crystal: new THREE.OctahedronGeometry(0.18, 0),
+    };
     const g = new GeoBuilder();
     const m = new THREE.Matrix4();
-    const local = new THREE.Matrix4();
+    const T4 = (x, y, z) => new THREE.Matrix4().makeTranslation(x, y, z);
+    const at = (base, ...rest) => rest.reduce((acc, mm) => acc.multiply(mm), base.clone());
     const q = new THREE.Quaternion();
     const e = new THREE.Euler();
+    const V = (x, y, z) => new THREE.Vector3(x, y, z);
+    const cactusGreen = [0x4f8f3a, 0x5c9c45];
+    const crystalCols = [0x9ff2ff, 0xc9a8ff, 0xff8fe0];
+
+    const place = {
+      tree(x, z) {
+        const s = 0.8 + rand() * 0.6;
+        q.setFromEuler(e.set(0, rand() * Math.PI, 0));
+        m.compose(V(x, BASE_Y, z), q, V(s, s, s));
+        const leafCol = P.leaves[Math.floor(rand() * P.leaves.length)];
+        g.addGeometry(geos.trunk, at(m, T4(0, 0.2, 0)), P.trunk);
+        g.addGeometry(geos.leaf, at(m, T4(0, 0.65, 0)), leafCol);
+        g.addGeometry(geos.leaf2, at(m, T4(0, 1.0, 0)), leafCol);
+      },
+      snowpine(x, z) {
+        place.tree(x, z);
+        g.addGeometry(geos.cap, at(m, T4(0, 1.18, 0)), 0xffffff);
+      },
+      rock(x, z) {
+        q.setFromEuler(e.set(0, rand() * 6, 0));
+        m.compose(V(x, BASE_Y + 0.05, z), q, V(1 + rand(), 0.6 + rand() * 0.4, 1 + rand() * 0.5));
+        g.addGeometry(geos.rock, m, P.rock);
+      },
+      bigrock(x, z) {
+        q.setFromEuler(e.set(rand() * 0.4, rand() * 6, 0));
+        const s = 1.6 + rand() * 1.4;
+        m.compose(V(x, BASE_Y + 0.1, z), q, V(s, s * (0.8 + rand() * 0.8), s));
+        g.addGeometry(geos.rock, m, P.rock);
+      },
+      flowers(x, z) {
+        const col = P.flowers[Math.floor(rand() * P.flowers.length)];
+        for (let k = 0; k < 3; k++) {
+          m.makeTranslation(x + (rand() - 0.5) * 0.5, BASE_Y + 0.04, z + (rand() - 0.5) * 0.5);
+          g.addGeometry(geos.flower, m, col);
+        }
+      },
+      cactus(x, z) {
+        const s = 0.8 + rand() * 0.5;
+        q.setFromEuler(e.set(0, rand() * Math.PI, 0));
+        m.compose(V(x, BASE_Y, z), q, V(s, s, s));
+        const col = cactusGreen[Math.floor(rand() * 2)];
+        g.addGeometry(geos.cactus, at(m, T4(0, 0.4, 0)), col);
+        const arms = rand() < 0.7 ? 2 : 1;
+        for (let k = 0; k < arms; k++) {
+          const side = k === 0 ? 1 : -1;
+          const h = 0.35 + rand() * 0.2;
+          g.addGeometry(geos.arm, at(m, T4(side * 0.16, h, 0), new THREE.Matrix4().makeRotationZ(Math.PI / 2)), col);
+          g.addGeometry(geos.arm, at(m, T4(side * 0.27, h + 0.14, 0)), col);
+        }
+      },
+      deadtree(x, z) {
+        const s = 0.9 + rand() * 0.5;
+        q.setFromEuler(e.set(0, rand() * Math.PI, 0));
+        m.compose(V(x, BASE_Y, z), q, V(s, s, s));
+        g.addGeometry(geos.trunk, at(m, T4(0, 0.2, 0)), P.trunk);
+        g.addGeometry(geos.branch, at(m, T4(0, 0.55, 0)), P.trunk);
+        for (const side of [-1, 1])
+          g.addGeometry(geos.branch, at(m, T4(side * 0.1, 0.6, 0), new THREE.Matrix4().makeRotationZ(side * -0.8)), P.trunk);
+      },
+      crystal(x, z) {
+        const col = crystalCols[Math.floor(rand() * crystalCols.length)];
+        for (let k = 0; k < 1 + Math.floor(rand() * 3); k++) {
+          const s = 0.8 + rand() * 1.4;
+          q.setFromEuler(e.set((rand() - 0.5) * 0.6, rand() * 6, (rand() - 0.5) * 0.6));
+          m.compose(V(x + (rand() - 0.5) * 0.4, BASE_Y + 0.15 * s, z + (rand() - 0.5) * 0.4), q, V(s * 0.6, s * 1.6, s * 0.6));
+          g.addGeometry(geos.crystal, m, col);
+        }
+      },
+    };
+
+    const decor = this.theme.decor;
     const pad = 6;
     for (let r = -pad; r < co.h + pad; r++)
       for (let c = -pad; c < co.w + pad; c++) {
         if (occupied(c, r, 1)) continue;
-        const p = rand();
+        let p = rand();
         const x = c + 0.25 + rand() * 0.5;
         const z = r + 0.25 + rand() * 0.5;
-        if (p < 0.22) {
-          const s = 0.8 + rand() * 0.6;
-          q.setFromEuler(e.set(0, rand() * Math.PI, 0));
-          m.compose(new THREE.Vector3(x, BASE_Y, z), q, new THREE.Vector3(s, s, s));
-          const leafCol = PALETTE.leaves[Math.floor(rand() * 3)];
-          g.addGeometry(trunkGeo, local.copy(m).multiply(new THREE.Matrix4().makeTranslation(0, 0.2, 0)), PALETTE.trunk);
-          g.addGeometry(leafGeo, local.copy(m).multiply(new THREE.Matrix4().makeTranslation(0, 0.65, 0)), leafCol);
-          g.addGeometry(leafGeo2, local.copy(m).multiply(new THREE.Matrix4().makeTranslation(0, 1.0, 0)), leafCol);
-        } else if (p < 0.27) {
-          q.setFromEuler(e.set(0, rand() * 6, 0));
-          m.compose(
-            new THREE.Vector3(x, BASE_Y + 0.05, z),
-            q,
-            new THREE.Vector3(1 + rand(), 0.6 + rand() * 0.4, 1 + rand() * 0.5),
-          );
-          g.addGeometry(rockGeo, m, PALETTE.rock);
-        } else if (p < 0.4) {
-          const col = PALETTE.flowers[Math.floor(rand() * PALETTE.flowers.length)];
-          for (let k = 0; k < 3; k++) {
-            m.makeTranslation(x + (rand() - 0.5) * 0.5, BASE_Y + 0.04, z + (rand() - 0.5) * 0.5);
-            g.addGeometry(flowerGeo, m, col);
+        for (const [kind, chance] of decor) {
+          if (p < chance) {
+            place[kind](x, z);
+            break;
           }
+          p -= chance;
         }
       }
-    for (const geo of [trunkGeo, leafGeo, leafGeo2, rockGeo, flowerGeo]) geo.dispose();
+    for (const geo of Object.values(geos)) geo.dispose();
     const mesh = new THREE.Mesh(g.build(), vertexToon());
     mesh.castShadow = true;
     mesh.receiveShadow = true;
@@ -478,6 +627,14 @@ export class CourseView {
 
   update(t, dt) {
     for (const { grp, sp } of this.spinnerMeshes) grp.rotation.y = -spinnerAngle(sp, t);
+    if (this.boostMat) this.boostMat.emissiveIntensity = 0.25 + 0.35 * (0.5 + 0.5 * Math.sin(t * 8));
+    for (const grp of this.portalMeshes) {
+      grp.children[0].rotation.y = t * 2;
+      for (const sp of grp.children.slice(2)) {
+        const a = sp.userData.phase + t * 3;
+        sp.position.set(Math.cos(a) * PORTAL_R, 0.12 + Math.sin(t * 4 + sp.userData.phase) * 0.05, Math.sin(a) * PORTAL_R);
+      }
+    }
     for (const m of this.bumperMeshes) {
       m.pulse = Math.max(0, m.pulse - dt * 4);
       const s = 1 + Math.sin(m.pulse * Math.PI) * 0.25;

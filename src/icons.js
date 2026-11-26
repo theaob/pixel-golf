@@ -23,6 +23,12 @@ export const ICONS = {
     '<path fill="#ffd166" d="M3 0h1v2H3zM0 2h7v1H0zM1 3h5v1H1zM2 4h3v1H2zM1 5h2v1H1zM4 5h2v1H4zM0 6h2v1H0zM5 6h2v1H5z"/>',
     'star',
   ),
+  lock: svg(
+    7,
+    8,
+    '<path fill="#1a1426" d="M2 0h3v1H2zM1 1h1v3H1zM5 1h1v3H5zM0 3h7v5H0z"/><path fill="#ffd166" d="M3 5h1v2H3z"/>',
+    'lock',
+  ),
   starEmpty: svg(
     7,
     7,

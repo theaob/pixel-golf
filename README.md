@@ -13,6 +13,21 @@ npm test         # headless check: every hole parses and a bot can sink each one
 
 **Controls:** drag back from anywhere on the screen and release to putt (slingshot style). Pinch or scroll to zoom. The eye button shows the whole course.
 
+## Courses
+
+| Course | Difficulty | Concept | Unlock |
+| --- | --- | --- | --- |
+| Front Nine | Easy | The basics | open |
+| Back Nine | Medium | Ramps, islands, pinball | open |
+| Frost Peak | Medium | Ice (`i`) is nearly frictionless | 12 ★ |
+| Desert Canyon | Medium | Boost pads (`→←↑↓`) launch the ball | 24 ★ |
+| Volcano Isle | Hard | Water becomes lava; narrow paths | 40 ★ |
+| Neon Space | Expert | Portals (`@` in, `&` out) | 56 ★ |
+
+Each course has its own theme (`src/themes.js`): palette, lighting, scenery and sky. The Daily Hole rotates through the themes. Stars unlock later courses, which rewards replaying holes for 3 stars.
+
+`node tests/calibrate.js [courseId] [trials]` runs a bot with human-like aim error (±3°, ±8% power) to estimate strokes per hole. It's how the pars and difficulty labels were set; results are noisy, so use 12+ trials.
+
 ## Keep-coming-back features
 
 - **Daily Hole:** a new procedurally generated hole every day (`src/daily.js`), the same for everyone on that date. Your first finish of the day counts; replays are for fun. `npm test` plays 45 days of generated holes with the bot, and `node tests/daily.test.js 365` checks a full year.

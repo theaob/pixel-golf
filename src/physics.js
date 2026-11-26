@@ -5,6 +5,7 @@ import {
   HOLE_R,
   WALL_T,
   SPINNER_T,
+  PORTAL_R,
   tileAt,
   isPlayable,
   gradientOf,
@@ -14,7 +15,8 @@ import {
 export const DT = 1 / 240;
 export const MAX_SPEED = 7.5; // full-power shot, world units / s
 const GRAVITY = 9.8 * (5 / 7); // rolling sphere on an incline
-const FRICTION = { [T.GRASS]: 1.25, [T.SLOPE]: 1.25, [T.SAND]: 6.0, [T.WATER]: 1.25 };
+const FRICTION = { [T.GRASS]: 1.25, [T.SLOPE]: 1.25, [T.SAND]: 6.0, [T.WATER]: 1.25, [T.ICE]: 0.18, [T.BOOST]: 1.25 };
+const BOOST_ACCEL = 16; // world units / s^2 along the pad's arrow
 const DAMPING = 0.25; // proportional drag, 1/s
 const WALL_E = 0.72;
 const BUMPER_E = 1.15;
@@ -93,6 +95,14 @@ export function stepBall(ball, course, t, events) {
   ball.vx -= gx * GRAVITY * dt;
   ball.vz -= gz * GRAVITY * dt;
 
+  // Boost pads.
+  if (tile && tile.type === T.BOOST) {
+    ball.vx += tile.dir[0] * BOOST_ACCEL * dt;
+    ball.vz += tile.dir[1] * BOOST_ACCEL * dt;
+    if (ball.onBoost !== tile) events.push({ type: 'boost' });
+    ball.onBoost = tile;
+  } else ball.onBoost = null;
+
   // Cup: gentle funnel + capture.
   const hx = course.hole.x - ball.x;
   const hz = course.hole.z - ball.z;
@@ -110,11 +120,12 @@ export function stepBall(ball, course, t, events) {
     ball.vz += (hz / (hd || 1)) * pull * dt;
   }
 
-  // Rolling friction + drag.
+  // Rolling friction + drag (much less of both on ice).
   speed = Math.hypot(ball.vx, ball.vz);
   if (speed > 0) {
     const mu = FRICTION[type] ?? 1.25;
-    const nv = Math.max(0, speed - mu * dt) * (1 - DAMPING * dt);
+    const damp = type === T.ICE ? DAMPING * 0.3 : DAMPING;
+    const nv = Math.max(0, speed - mu * dt) * (1 - damp * dt);
     const k = nv / speed;
     ball.vx *= k;
     ball.vz *= k;
@@ -185,6 +196,24 @@ export function stepBall(ball, course, t, events) {
     ball.vz *= k;
   }
 
+  // Portals: entering one pops the ball out of its partner, keeping velocity.
+  for (const p of course.portals) {
+    if (Math.hypot(ball.x - p.from.x, ball.z - p.from.z) < PORTAL_R) {
+      let sp = Math.hypot(ball.vx, ball.vz);
+      if (sp < 0.8) {
+        // A ball creeping in still comes out with a little push.
+        const k = 0.8 / (sp || 1);
+        ball.vx = sp ? ball.vx * k : 0;
+        ball.vz = sp ? ball.vz * k : -0.8;
+        sp = 0.8;
+      }
+      events.push({ type: 'portal', x: p.from.x, z: p.from.z, tx: p.to.x, tz: p.to.z });
+      ball.x = p.to.x + (ball.vx / sp) * (PORTAL_R + 0.05);
+      ball.z = p.to.z + (ball.vz / sp) * (PORTAL_R + 0.05);
+      break;
+    }
+  }
+
   // Hazards.
   const now = tileAt(course, ball.x, ball.z);
   if (!isPlayable(now)) {
@@ -208,7 +237,7 @@ export function stepBall(ball, course, t, events) {
   }
 
   speed = Math.hypot(ball.vx, ball.vz);
-  const onSlope = now.type === T.SLOPE;
+  const onSlope = now.type === T.SLOPE || now.type === T.BOOST;
   if ((speed < STOP_SPEED && !onSlope && hd >= HOLE_R) || ball.time > MAX_ROLL_TIME) {
     ball.moving = false;
     ball.vx = ball.vz = 0;

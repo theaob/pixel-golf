@@ -11,6 +11,12 @@ import { native } from './native.js';
 import { dailyLevel, dateKey } from './daily.js';
 import { createProgress, SKINS, SAVE_KEY } from './progress.js';
 import { ICONS, stars as starIcons } from './icons.js';
+import { themeFor } from './themes.js';
+
+const DIFFICULTY = ['', 'EASY', 'MEDIUM', 'HARD', 'EXPERT'];
+const DAILY_THEMES = ['meadow', 'frost', 'desert', 'volcano', 'space'];
+const totalStars = () => COURSES.reduce((a, c) => a + progress.courseStars(c.id, c.holes), 0);
+const isUnlocked = (c) => totalStars() >= (c.unlock || 0);
 
 const SHARE_URL = 'https://theaob.github.io/pixel-golf/';
 
@@ -209,8 +215,16 @@ function loadHole(i) {
   }
   game.holeIndex = i;
   game.course = parseLevel(LEVELS[i]);
-  game.view = new CourseView(game.course);
+  const theme = themeFor(course.theme);
+  game.theme = theme;
+  game.view = new CourseView(game.course, theme);
   scene.add(game.view.group);
+  hemi.color.set(theme.hemi[0]);
+  hemi.groundColor.set(theme.hemi[1]);
+  hemi.intensity = theme.hemi[2];
+  sun.color.set(theme.sun[0]);
+  sun.intensity = theme.sun[1];
+  pixel.clearColor.set(theme.sky);
   game.ball = createBall(game.course.tee.x, game.course.tee.z);
   game.strokes = 0;
   ballMesh.visible = true;
@@ -244,7 +258,14 @@ function startHole(i) {
 
 function dailyCourse(key) {
   const level = dailyLevel(key);
-  return { id: 'daily', name: `Daily #${level.daily.number}`, firstHole: 1, holes: [level], daily: level.daily };
+  return {
+    id: 'daily',
+    name: `Daily #${level.daily.number}`,
+    firstHole: 1,
+    holes: [level],
+    daily: level.daily,
+    theme: DAILY_THEMES[level.daily.number % DAILY_THEMES.length],
+  };
 }
 
 function startDaily() {
@@ -278,7 +299,10 @@ function holeFinished(pickedUp = false) {
   game.state = 'sunk';
   game.stateTimer = 0;
   const good = strokes <= par;
+  const lockedBefore = COURSES.filter((c) => !isUnlocked(c));
   const reward = course.daily ? null : progress.recordHole(holeId(game.holeIndex), strokes, par, pickedUp);
+  const newlyOpen = lockedBefore.filter(isUnlocked);
+  if (newlyOpen.length) setTimeout(() => toast(`NEW COURSE UNLOCKED!<br>${newlyOpen[0].name.toUpperCase()}`, 3200), 1500);
   setTimeout(() => {
     sfx.fanfare(good);
     let sub = `${strokes} STROKE${strokes === 1 ? '' : 'S'}`;
@@ -419,16 +443,29 @@ function handleEvents(events) {
         holeFinished();
         break;
       }
+      case 'boost':
+        sfx.boost();
+        vibrate(8);
+        break;
+      case 'portal':
+        sfx.portal();
+        vibrate(15);
+        burst(e.x, heightAt(game.course, e.x, e.z) + 0.1, e.z, [game.view.P.portalIn, 0xffffff], 10, { speed: 1, up: 1.5, life: 0.5 });
+        burst(e.tx, heightAt(game.course, e.tx, e.tz) + 0.1, e.tz, [game.view.P.portalOut, 0xffffff], 10, { speed: 1, up: 1.5, life: 0.5 });
+        break;
       case 'water': {
-        sfx.splash();
+        const lava = game.theme.lava;
+        if (lava) sfx.sizzle();
+        else sfx.splash();
         vibrate(30);
         const y = heightAt(game.course, e.x, e.z) - 0.12;
-        burst(e.x, y, e.z, [0xffffff, PALETTE.water, 0xbfe9ff], 24, { speed: 1.2, up: 3, life: 0.8 });
+        const cols = lava ? [0xffd166, 0xff6a1f, 0x3a2a33] : [0xffffff, game.view.P.water, 0xbfe9ff];
+        burst(e.x, y, e.z, cols, 24, { speed: 1.2, up: 3, life: 0.8 });
         ballMesh.visible = false;
         game.state = 'water';
         game.stateTimer = 1.1;
         game.strokes += 1;
-        showBanner('SPLASH!', '+1 PENALTY', 1100);
+        showBanner(lava ? 'TOO HOT!' : 'SPLASH!', '+1 PENALTY', 1100);
         updateHud();
         break;
       }
@@ -689,13 +726,53 @@ function refreshTitle() {
       : `#${n} · PAR ${daily.par}${streak ? '<br>KEEP YOUR STREAK GOING!' : ''}`;
   $('btn-daily').querySelector('.badge')?.remove();
   if (done == null) $('btn-daily').insertAdjacentHTML('beforeend', '<span class="badge">NEW</span>');
-  COURSES.forEach((c, ci) => {
-    const par = c.holes.reduce((a, l) => a + l.par, 0);
-    const best = progress.data.rounds[c.id];
-    $(`best-${ci}`).textContent = best ? `BEST ${best} · PAR ${par}` : `PAR ${par}`;
-    $(`stars-${ci}`).innerHTML = `${ICONS.star}${progress.courseStars(c.id, c.holes)}/${c.holes.length * 3}`;
-  });
+  const all = COURSES.reduce((a, c) => a + c.holes.length * 3, 0);
+  const open = COURSES.filter(isUnlocked).length;
+  $('courses-sub').innerHTML = `${ICONS.star}${totalStars()}/${all} · ${open}/${COURSES.length} OPEN`;
 }
+
+function renderCourses() {
+  const stars = totalStars();
+  $('courses-stars').innerHTML = `${ICONS.star}${stars} STARS`;
+  const hex = (c) => `#${c.toString(16).padStart(6, '0')}`;
+  $('course-list').innerHTML = COURSES.map((c, ci) => {
+    const theme = themeFor(c.theme);
+    const pal = { grassA: 0x6cc24a, wallSide: 0xd98b4e, ...theme.palette };
+    const par = c.holes.reduce((a, l) => a + l.par, 0);
+    const got = progress.courseStars(c.id, c.holes);
+    const best = progress.data.rounds[c.id];
+    const open = stars >= (c.unlock || 0);
+    const pips = [1, 2, 3, 4].map((i) => `<i class="${i <= c.difficulty ? 'on' : ''}"></i>`).join('');
+    return `<button class="course-card${open ? '' : ' locked'}" data-ci="${ci}"
+      style="--c1:${hex(pal.grassA)};--c2:${hex(pal.wallSide)};--c3:${hex(theme.sky)}">
+      <span class="cc-swatch"></span>
+      <span class="cc-body">
+        <span class="cc-head"><span class="cc-name">${c.name.toUpperCase()}</span>
+          <span class="cc-diff d${c.difficulty}"><span class="pips">${pips}</span>${DIFFICULTY[c.difficulty]}</span></span>
+        <span class="cc-concept">${c.concept}</span>
+        <span class="cc-meta">${
+          open
+            ? `${c.holes.length} HOLES · PAR ${par} · ${ICONS.star}${got}/${c.holes.length * 3}${best ? ` · BEST ${best}` : ''}`
+            : `${ICONS.lock} COLLECT ${ICONS.star}${c.unlock} TO UNLOCK (${c.unlock - stars} MORE)`
+        }</span>
+      </span>
+    </button>`;
+  }).join('');
+}
+
+$('course-list').addEventListener('click', (e) => {
+  const card = e.target.closest('.course-card');
+  if (!card) return;
+  sfx.unlock();
+  const c = COURSES[Number(card.dataset.ci)];
+  if (!isUnlocked(c)) {
+    sfx.wall(1);
+    toast(`NEED ${c.unlock - totalStars()} MORE ${ICONS.star}<br>3 STARS = UNDER PAR`);
+    return;
+  }
+  sfx.click();
+  newGame(Number(card.dataset.ci));
+});
 
 // Keep the countdown / date fresh while the title is showing.
 let titleDay = dateKey();
@@ -782,8 +859,12 @@ bind('btn-reminders', async () => {
   }
   $('btn-reminders').textContent = `REMINDERS: ${progress.data.reminders.enabled ? 'ON' : 'OFF'}`;
 });
-bind('btn-play-0', () => newGame(0));
-bind('btn-play-1', () => newGame(1));
+bind('btn-courses', () => {
+  renderCourses();
+  hideScreens();
+  $('screen-courses').classList.remove('hidden');
+});
+bind('btn-courses-close', showTitle);
 bind('btn-next', nextHole);
 bind('btn-menu', () => setPaused(!game.paused));
 bind('btn-resume', () => setPaused(false));
@@ -952,14 +1033,14 @@ document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: fal
 document.addEventListener('gesturestart', (e) => e.preventDefault());
 
 // Debug hook for automated tests.
-window.__pixelGolf = { game, progress, startDaily, showTitle, shootAt: (dx, dz, p) => { aim.dir.set(dx, dz).normalize(); aim.power = p; takeShot(); }, startHole, newGame };
+window.__pixelGolf = { game, progress, startDaily, showTitle, COURSES, shootAt: (dx, dz, p) => { aim.dir.set(dx, dz).normalize(); aim.power = p; takeShot(); }, startHole, newGame };
 
 showTitle();
 frame();
 
 // Android: hardware back button and app backgrounding.
 native.onBack(() => {
-  if (!$('screen-shop').classList.contains('hidden') || !$('screen-daily').classList.contains('hidden')) {
+  if (['screen-shop', 'screen-daily', 'screen-courses'].some((id) => !$(id).classList.contains('hidden'))) {
     showTitle();
   } else if (!$('screen-card').classList.contains('hidden')) {
     $('btn-card-close').click();

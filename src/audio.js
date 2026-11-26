@@ -85,6 +85,17 @@ export class Sfx {
     this.tone(420, 0.1, { type: 'triangle', vol: 0.25, delay: 0.08, slide: -200 });
     this.tone(260, 0.15, { type: 'triangle', vol: 0.2, delay: 0.17 });
   }
+  boost() {
+    this.tone(220, 0.25, { type: 'sawtooth', vol: 0.1, slide: 600 });
+  }
+  portal() {
+    this.tone(880, 0.3, { type: 'sine', vol: 0.15, slide: -700 });
+    this.tone(330, 0.3, { type: 'square', vol: 0.06, slide: 900, delay: 0.05 });
+  }
+  sizzle() {
+    this.hiss(0.7, { freq: 4000, q: 0.5, vol: 0.35, sweep: -2500 });
+    this.tone(160, 0.3, { type: 'sawtooth', vol: 0.08, slide: -80 });
+  }
   splash() {
     this.hiss(0.5, { freq: 1800, q: 0.7, vol: 0.45, sweep: -1500 });
     this.tone(500, 0.2, { type: 'sine', vol: 0.15, slide: -350 });

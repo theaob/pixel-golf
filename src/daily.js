@@ -251,6 +251,15 @@ export function isConnected(level) {
   while (q.length) {
     const [c, r] = q.shift();
     if (`${c},${r}` === goal) return true;
+    for (const p of course.portals) {
+      if (Math.floor(p.from.x) === c && Math.floor(p.from.z) === r) {
+        const k = `${Math.floor(p.to.x)},${Math.floor(p.to.z)}`;
+        if (!seen.has(k)) {
+          seen.add(k);
+          q.push([Math.floor(p.to.x), Math.floor(p.to.z)]);
+        }
+      }
+    }
     for (const [nc, nr, wk] of [
       [c + 1, r, `v${c + 1},${r}`],
       [c - 1, r, `v${c},${r}`],
